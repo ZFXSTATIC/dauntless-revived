@@ -12,7 +12,8 @@ export const TAILSCALE_DOWNLOAD_URL = "https://tailscale.com/download";
 export const VC_REDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
 // Self-update feed: a rolling GitHub release that the release workflow keeps current
 // (update.electronjs.org only reads plain semver tags, and launcher releases are tagged launcher-v*).
-export const UPDATE_FEED_URL = "https://github.com/mixutin/dauntless-revived/releases/download/launcher-updates";
+// This fork's own feed, so launchers built here update from here (with the client mods).
+export const UPDATE_FEED_URL = "https://github.com/ZFXSTATIC/dauntless-revived/releases/download/launcher-updates";
 
 // Game layout (paths relative to the folder that contains Archon/).
 export const WIN64_RELATIVE_DIR = "Archon/Binaries/Win64";

@@ -30,6 +30,10 @@ PLAYING
 WHAT THE SCRIPTS CHANGE ON YOUR PC
   - Copies dxgi.dll and UndauntedInternalServer.dll into ...\Archon\Binaries\Win64\
     (delete them to uninstall). Their SHA-256 hashes are checked before and after copying.
+  - Installs UE4SS and the client mods from client-mods\ into the same folder (dwmapi.dll and
+    ue4ss\): behemoth health bars, a behemoth tracker, a mod menu (Home key) and the ZFX status
+    logo. Checked against client-mods\manifest.json. Run setup.ps1 with -NoMods to skip them;
+    delete dwmapi.dll and the ue4ss folder to remove them.
   - Writes two sections of %LOCALAPPDATA%\Archon\Saved\Config\WindowsClient\Engine.ini:
     graphics/memory settings, and the game's chat connection, which is pointed at the host
     so the game never contacts Epic's old chat server with your login.

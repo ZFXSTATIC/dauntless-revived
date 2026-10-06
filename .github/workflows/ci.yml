@@ -502,7 +502,7 @@ jobs:
     needs: [node-packages, launcher, launcher-linux, server-port-linux, server-port-openbsd, native-regressions, internal-server-dll, server-kit, docs, repo-hygiene]
     if: >-
       github.event_name == 'push' && github.ref == 'refs/heads/dauntless-revived' &&
-      github.repository == 'mixutin/dauntless-revived' && vars.LAUNCHER_AUTO_RELEASE != 'false'
+      github.repository == 'ZFXSTATIC/dauntless-revived' && vars.LAUNCHER_AUTO_RELEASE != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:

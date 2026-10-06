@@ -11,12 +11,14 @@
 # -Zip       optional: the downloaded game zip, to check it before you extract it
 # -Username  3-16 letters, digits or _   (asked for if missing)
 # -Invite    the invite code from the host (asked for if missing)
+# -NoMods    skip installing UE4SS and the client mods (client-mods\, see its README.md)
 param(
   [string]$Server,
   [string]$Game = "C:\D144\Dauntless",
   [string]$Zip,
   [string]$Username,
-  [string]$Invite
+  [string]$Invite,
+  [switch]$NoMods
 )
 $ErrorActionPreference = "Stop"
 
@@ -69,6 +71,43 @@ foreach ($name in "dxgi.dll", "UndauntedInternalServer.dll") {
   Unblock-File -LiteralPath $target
   if ((Hash $target) -ne $Pinned[$name]) { Fail "$name changed while copying. Is antivirus interfering?" }
   Ok "$name installed and checked"
+}
+
+# 2b. UE4SS and the client mods (health bars, tracker, mod menu, ZFX status), from client-mods\.
+# Every file is checked against client-mods\manifest.json before and after copying. mods.txt and
+# UE4SS-settings.ini are only written when missing, so a player's own choices are kept.
+# Problems here only warn: the game still works without the mods.
+if (-not $NoMods) {
+  Step "Installing UE4SS and the client mods"
+  $modsSrc = @((Join-Path $PSScriptRoot "client-mods"), (Join-Path $PSScriptRoot "..\client-mods")) |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_ "manifest.json") } | Select-Object -First 1
+  if (-not $modsSrc) {
+    Write-Host "   --  client-mods\ not found next to this kit: skipped (the game works without it)" -ForegroundColor Yellow
+  } else {
+    $manifest = Get-Content -LiteralPath (Join-Path $modsSrc "manifest.json") -Raw | ConvertFrom-Json
+    $copied = 0; $kept = 0; $bad = 0
+    foreach ($f in $manifest.files) {
+      $rel = $f.path -replace '/', '\'
+      $src = Join-Path $modsSrc $rel
+      $dst = Join-Path $Win64 $rel
+      $want = $f.sha256.ToUpper()
+      if (Test-Path -LiteralPath $dst) {
+        if ($f.keep) { $kept++; continue }
+        if ((Hash $dst) -eq $want) { continue }
+      }
+      if (-not (Test-Path -LiteralPath $src) -or (Hash $src) -ne $want) {
+        Write-Host "   !!  $($f.path) in the kit does not match manifest.json - not installed" -ForegroundColor Yellow
+        $bad++; continue
+      }
+      New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null
+      Copy-Item -LiteralPath $src -Destination $dst -Force
+      Unblock-File -LiteralPath $dst
+      if ((Hash $dst) -ne $want) { Write-Host "   !!  $($f.path) changed while copying. Is antivirus interfering?" -ForegroundColor Yellow; $bad++; continue }
+      $copied++
+    }
+    if ($bad -eq 0) { Ok "UE4SS + mods ready ($copied file(s) installed or updated, $kept setting file(s) kept)" }
+    else { Write-Host "   !!  $bad mod file(s) could not be installed; the game still works without them" -ForegroundColor Yellow }
+  }
 }
 
 $missing = @("MSVCP140.dll", "VCRUNTIME140_1.dll") | Where-Object { -not (Test-Path (Join-Path $env:WINDIR "System32\$_")) }

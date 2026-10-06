@@ -52,6 +52,7 @@ import { compareManifests, resolveInside, type GameManifest, type ManifestFile }
 import { DownloadError, DownloadJob } from "./downloader";
 import { AbortedError, hashFile, removePartFiles, verifyInstall, VerifiedCache } from "./verify";
 import { dllStatus, installPinnedDlls, DllError, win64Dir } from "./dlls";
+import { installClientMods } from "./client-mods";
 import { applyGameConfig } from "./engineini";
 import { locateExistingGame } from "./game-folder";
 import { buildLaunchArgs, describeLaunch, GameProcess, type LaunchRuntime, type SpawnFn } from "./launch";
@@ -908,6 +909,16 @@ export class Controller {
     if (t) this.p.emitProgress(t);
   }
 
+  // UE4SS and the client mods (client-mods.ts). Never fatal: the game runs without them.
+  private async installMods(dir: string): Promise<void> {
+    try {
+      const r = await installClientMods(this.p.resourcesDir, dir);
+      if (r) log.info(`client mods: ${r.installed} installed, ${r.upToDate} up to date, ${r.kept} kept`);
+    } catch (e) {
+      log.warn(`client mods not installed: ${describeError(e)}`);
+    }
+  }
+
   private async runTask(mode: "install" | "repair"): Promise<ActionResult> {
     if (this.task || this.busy) return err("busy");
     if (this.game.running) return this.fail("already_running");
@@ -1006,6 +1017,7 @@ export class Controller {
       this.setTask(blank("dlls", 2, 2));
       this.publish();
       await installPinnedDlls(this.p.resourcesDir, dir);
+      await this.installMods(dir);
       await removePartFiles(dir, manifest.files);
       await this.settings.update((s) => {
         s.verifiedDir = dir;
@@ -1101,6 +1113,7 @@ export class Controller {
           return this.fail("dll_failed");
         }
       }
+      await this.installMods(dir);
 
       // Where the game connects. Public mode: the local relay, started before the game.
       let gameHost = sv.host;

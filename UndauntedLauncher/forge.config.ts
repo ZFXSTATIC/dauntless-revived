@@ -23,8 +23,9 @@ const config: ForgeConfig = {
     // the brand icons in ../brand/launcher/, made by npm run icon.
     icon: "assets/icon",
     // The two pinned DLLs the game needs, the window icon, and the license texts of the third-party
-    // software the launcher and the DLLs include. Nothing else ships outside the asar.
-    extraResource: ["assets/dxgi.dll", "assets/UndauntedInternalServer.dll", "assets/icon.png", "THIRD-PARTY-NOTICES.txt"],
+    // software the launcher and the DLLs include, plus ../client-mods (UE4SS and the client mods, installed
+    // by src/main/client-mods.ts). Nothing else ships outside the asar.
+    extraResource: ["assets/dxgi.dll", "assets/UndauntedInternalServer.dll", "assets/icon.png", "THIRD-PARTY-NOTICES.txt", "../client-mods"],
     win32metadata: {
       CompanyName: "Dauntless Revived",
       FileDescription: "Dauntless Revived Launcher",

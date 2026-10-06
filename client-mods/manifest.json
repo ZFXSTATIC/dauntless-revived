@@ -1,0 +1,90 @@
+{
+    "version":  1,
+    "target":  "Archon/Binaries/Win64",
+    "files":  [
+                  {
+                      "path":  "dwmapi.dll",
+                      "sha256":  "cf440b9eb8643bb7c434acfda696aee57fd981d185dca5e57fb8dbb18f8fc1cd",
+                      "size":  279552,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/LICENSE",
+                      "sha256":  "99e1d8f8b7cb68e8b2313380ae3b0c8115e39dfbc443fcf21fd67ab74ce1d57e",
+                      "size":  1085,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/BehemothHealthBars/Scripts/main.lua",
+                      "sha256":  "98be41397709331c5d74e8d1369ef73b256091bba05dd88fe62ef19be2492774",
+                      "size":  35275,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/BehemothTracker/Scripts/main.lua",
+                      "sha256":  "cc9ff0a36c1eaa17d46b57b6fbb6e21d372037f49357fbc2dc6ae1bd5114d7c3",
+                      "size":  21765,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/Keybinds/Scripts/main.lua",
+                      "sha256":  "297dd6f7f560e1cebc15cd4509ad481495d9179f5758a8034be4c417a369803a",
+                      "size":  4190,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/ModMenu/Scripts/main.lua",
+                      "sha256":  "537e9c2b704c29fd32c6e58ca8ec8de3c7c48611fcb28c30107f3ee63ae79a30",
+                      "size":  25316,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/mods.txt",
+                      "sha256":  "dd640e02e2404486e16c90027a726ed4ebf3e248c0f787713c1bcb5fb37a7cd4",
+                      "size":  127,
+                      "keep":  true
+                  },
+                  {
+                      "path":  "ue4ss/Mods/shared/FrameTick/FrameTick.lua",
+                      "sha256":  "c7c1a952c0ce6134fd3d742b9769407f223b77130706389e733ff10fe49b65da",
+                      "size":  4977,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/shared/ModSettings/ModSettings.lua",
+                      "sha256":  "c5d998207a38ff2092b67262ff4c71af0e150b9c9be1eab8806a6dbb0801786b",
+                      "size":  1759,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/shared/UEHelpers/UEHelpers.lua",
+                      "sha256":  "7476f02eef0c87bfeab169f2ffe2e704363faeaae4bf9f1bda574b1e34f4a0e9",
+                      "size":  10237,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/ZFXStatus/Scripts/main.lua",
+                      "sha256":  "b58413dc24c6e33b47aca1e9c9b20b5e6f365d82fa4e048f096e175bd461acc8",
+                      "size":  9925,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/ZFXStatus/zfx_logo.png",
+                      "sha256":  "1217674f322693fb2e753ba81dccafca28b48e55e01755ce3e03da605b7e0da2",
+                      "size":  11454,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/UE4SS.dll",
+                      "sha256":  "680a026890abb4d0df2211251f8defc1681a584275f1521dcc0fe30af480006f",
+                      "size":  20605440,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/UE4SS-settings.ini",
+                      "sha256":  "a570cf325e142f5e01c99e72c4fe41dee05cb8980f230be40136e779465a381c",
+                      "size":  9420,
+                      "keep":  true
+                  }
+              ]
+}

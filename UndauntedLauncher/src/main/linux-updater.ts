@@ -14,7 +14,7 @@ function newer(a: string, b: string): boolean {
 }
 
 export async function findLinuxUpdate(): Promise<LinuxUpdate | null> {
-  const response = await fetch("https://api.github.com/repos/mixutin/dauntless-revived/releases/latest", {
+  const response = await fetch("https://api.github.com/repos/ZFXSTATIC/dauntless-revived/releases/latest", {
     headers: { Accept: "application/vnd.github+json", "User-Agent": `DauntlessRevivedLauncher/${app.getVersion()}` },
   });
   if (!response.ok) throw new Error(`GitHub returned ${response.status}`);

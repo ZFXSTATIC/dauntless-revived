@@ -11,8 +11,8 @@ $Pinned = @{
 }
 
 $commit = (git -C $Repo rev-parse HEAD).Trim()
-$dirty = [bool](git -C $Repo status --porcelain -- friend-kit)
-if ($dirty) { throw "friend-kit\ has uncommitted changes. Commit and push first, so SOURCE.txt names real code." }
+$dirty = [bool](git -C $Repo status --porcelain -- friend-kit client-mods)
+if ($dirty) { throw "friend-kit\ or client-mods\ has uncommitted changes. Commit and push first, so SOURCE.txt names real code." }
 $remote = (git -C $Repo remote get-url origin).Trim() -replace '\.git$', ''
 
 $Stage = Join-Path $Out "DauntlessRevived-FriendKit"
@@ -28,6 +28,8 @@ foreach ($name in $Pinned.Keys) {
   Copy-Item -LiteralPath $src -Destination (Join-Path $Stage "dll")
 }
 Copy-Item -LiteralPath (Join-Path $Repo "LICENSE.txt") -Destination $Stage
+# UE4SS and the client mods; setup.ps1 installs them (checked against client-mods\manifest.json).
+Copy-Item -LiteralPath (Join-Path $Repo "client-mods") -Destination (Join-Path $Stage "client-mods") -Recurse
 @(
   "Dauntless Revived - source code (AGPL-3.0)",
   "",

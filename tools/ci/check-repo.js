@@ -44,6 +44,10 @@ const ALLOWED_CONTENT = {
 // The only DLLs the repository may hold: Undaunted's prebuilt server DLLs, which the launcher ships and the
 // kit installs. Each must match its pin in both files below.
 const PINNED_DLLS = ["UndauntedLauncher/assets/dxgi.dll", "UndauntedLauncher/assets/UndauntedInternalServer.dll"];
+// UE4SS (MIT) and its loader, for the optional client mods in client-mods/. Each must match its SHA-256 in
+// client-mods/manifest.json, which the launcher and the friend kit check before installing.
+const CLIENT_MODS_MANIFEST = "client-mods/manifest.json";
+const CLIENT_MODS_DLLS = ["client-mods/dwmapi.dll", "client-mods/ue4ss/UE4SS.dll"];
 const DLL_PIN_SOURCES = [
     { file: "UndauntedLauncher/src/main/constants.ts", pattern: /name:\s*"([^"]+\.dll)",\s*sha256:\s*"([0-9a-fA-F]{64})"/g },
     { file: "deploy/windows-server/DauntlessServer.Common.ps1", pattern: /'([^']+\.dll)'\s*=\s*'([0-9a-fA-F]{64})'/g },
@@ -58,7 +62,7 @@ const NAME_RULES = [
     { why: "a game archive or asset", test: (p, base) => /\.(pak|ucas|utoc|uasset|uexp|umap|ubulk|ufont)$/.test(base) },
     { why: "an executable or installer", test: (p, base) => /\.(exe|msi)$/.test(base) },
     { why: "an archive (it could hold game files)", test: (p, base) => /\.(zip|7z|rar|tar|tgz|gz|xz|bz2|zst|nupkg)$/.test(base) },
-    { why: "a DLL other than the two pinned server DLLs", test: (p, base) => base.endsWith(".dll") && !PINNED_DLLS.some((d) => d.toLowerCase() === p) },
+    { why: "a DLL other than the pinned server and client-mods DLLs", test: (p, base) => base.endsWith(".dll") && ![...PINNED_DLLS, ...CLIENT_MODS_DLLS].some((d) => d.toLowerCase() === p) },
     { why: "under /data/ (runtime data, ignored)", test: (p) => p.startsWith("data/") },
     { why: "under /BaseGame144/ (the game, ignored)", test: (p) => p.startsWith("basegame144/") || p.startsWith("basegame144.") },
     { why: "in a game folder (Archon/)", test: (p) => /(^|\/)archon\//.test(p) },
@@ -279,6 +283,18 @@ for (const source of DLL_PIN_SOURCES) {
         else if (!pins.has(name)) fail(source.file, `has no SHA-256 pin for ${name}`);
         else if (pins.get(name) !== fileHashes.get(dll)) fail(dll, `does not match its SHA-256 pin in ${source.file}`);
     }
+}
+
+// The client-mods DLLs against client-mods/manifest.json.
+try {
+    const pins = new Map(JSON.parse(fs.readFileSync(path.join(ROOT, CLIENT_MODS_MANIFEST), "utf8")).files.map((f) => [`client-mods/${f.path}`, String(f.sha256).toLowerCase()]));
+    for (const dll of CLIENT_MODS_DLLS) {
+        if (!fileHashes.has(dll)) fail(dll, "is missing (it must be tracked)");
+        else if (!pins.has(dll)) fail(CLIENT_MODS_MANIFEST, `has no SHA-256 pin for ${dll}`);
+        else if (pins.get(dll) !== fileHashes.get(dll)) fail(dll, `does not match its SHA-256 pin in ${CLIENT_MODS_MANIFEST}`);
+    }
+} catch (error) {
+    fail(CLIENT_MODS_MANIFEST, `could not be read (${error.message})`);
 }
 
 // The launcher version names the release tag launcher-v<version>.
