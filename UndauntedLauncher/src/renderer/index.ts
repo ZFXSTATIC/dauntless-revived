@@ -14,8 +14,8 @@ import { formatBytes, formatDate, formatDuration, formatRunningTime } from "../s
 import { sortInstances, type InstanceKind, type ServerStatus, type StatusInstance } from "../shared/status";
 import { EXPOSURE_MODES, GRAPHICS_PRESETS, type Branding, type ExposureMode, type ExternalTarget, type GraphicsPreset, type LauncherError, type NewsItem, type Snapshot, type TaskProgress } from "../shared/types";
 
-type View = "play" | "news" | "server" | "settings" | "partners" | "credits";
-const VIEWS: readonly View[] = ["play", "news", "server", "settings", "partners", "credits"];
+type View = "play" | "news" | "server" | "settings" | "partners" | "mods" | "credits";
+const VIEWS: readonly View[] = ["play", "news", "server", "settings", "partners", "mods", "credits"];
 type Modal =
   | { kind: "invite"; link: string; name: string; host: string; mode: "public" | "private"; fp: string | null }
   // A public invite whose certificate is not the one this PC's key for that server belongs to.
@@ -1069,6 +1069,49 @@ function renderPartners(): void {
   ]);
 }
 
+// ------------------------------------------------------------------ mods page
+
+// The optional client mods (client-mods/ in the repository, by ZFXSTATIC): what each one does.
+// Information only; the launcher installs them and the in-game Mod Menu switches them.
+const MODS: readonly { icon: IconName; name: StringKey; text: StringKey; use: StringKey }[] = [
+  { icon: "heart", name: "mod_bhb_name", text: "mod_bhb_text", use: "mod_bhb_use" },
+  { icon: "hunt", name: "mod_trk_name", text: "mod_trk_text", use: "mod_trk_use" },
+  { icon: "settings", name: "mod_menu_name", text: "mod_menu_text", use: "mod_menu_use" },
+  { icon: "check", name: "mod_status_name", text: "mod_status_text", use: "mod_status_use" },
+];
+
+function renderMods(): void {
+  renderRegion($("#view-mods"), state.lang, () => [
+    h("div", { class: "page mods-page" },
+      h("h1", { class: "page-title", id: "mods-title" }, t("nav_mods")),
+      h("p", { class: "page-sub" }, t("mods_subtitle")),
+      card(
+        "mods-author",
+        h("span", { class: "badge mods-badge" }, t("mods_badge")),
+        h("h2", { class: "mods-title" }, t("mods_title")),
+        h("p", { class: "card-text mods-intro" }, t("mods_intro")),
+        h("div", { class: "mods-grid" },
+          ...MODS.map((m) =>
+            h("div", { class: "mod-card" },
+              h("span", { class: "mod-by" }, t("mods_by")),
+              h("strong", { class: "mod-name" }, icon(m.icon), t(m.name)),
+              h("span", { class: "mod-text" }, t(m.text)),
+              h("span", { class: "mod-use" }, t(m.use)),
+            ),
+          ),
+        ),
+      ),
+      card("",
+        h("h2", { class: "card-title" }, icon("info"), t("mods_notes_title")),
+        h("p", { class: "card-text" }, t("mods_note_local")),
+        h("p", { class: "card-text" }, t("mods_note_settings")),
+        h("p", { class: "small-print" }, t("mods_note_windows")),
+      ),
+      h("p", { class: "small-print mods-credit" }, t("mods_credit")),
+    ),
+  ]);
+}
+
 // ------------------------------------------------------------------ server page
 
 function renderServer(): void {
@@ -1408,6 +1451,7 @@ const NAV: { view: View; icon: IconName; key: StringKey }[] = [
   { view: "news", icon: "news", key: "nav_news" },
   { view: "server", icon: "server", key: "nav_server" },
   { view: "partners", icon: "people", key: "nav_partners" },
+  { view: "mods", icon: "puzzle", key: "nav_mods" },
   { view: "settings", icon: "settings", key: "nav_settings" },
 ];
 
@@ -1458,8 +1502,8 @@ function setView(v: View): void {
   for (const view of VIEWS) $(`#view-${view}`).hidden = view !== v;
   $("#actionbar").hidden = false;
   // The Server page shows everything the side panel shows, in full: no need for both. The Credits
-  // and Partners pages have long content and get the room too.
-  $(".world").classList.toggle("no-panel", v === "server" || v === "credits" || v === "partners");
+  // Partners and Mods pages have long content and get the room too.
+  $(".world").classList.toggle("no-panel", v === "server" || v === "credits" || v === "partners" || v === "mods");
   renderAll();
   if (changed && !reducedMotion.matches) {
     const selected = $(`#view-${v}`);
@@ -1515,6 +1559,7 @@ function renderAll(): void {
   if (state.view === "settings") renderSettings();
   if (state.view === "credits") renderCredits();
   if (state.view === "partners") renderPartners();
+  if (state.view === "mods") renderMods();
   renderActionBar();
   renderPanel();
 }
