@@ -4,13 +4,39 @@ import { logger } from '../logger';
 type Request = { GameMode: string; GameArgs: string; HuntId: string; ExpectedPlayers: string[] | undefined; Overflow?: boolean };
 type Connection = { host: string; port: number };
 
-export function OverflowUrl() {
+// OVERFLOW_DEPLOYSERVER_URL may list several workers, comma separated. The first one also
+// serves Ramsgate overflow; extra workers only take hunts.
+export function OverflowUrls() {
     const value = process.env.OVERFLOW_DEPLOYSERVER_URL;
-    if (!value) return undefined;
-    const url = new URL(value);
-    if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password || url.pathname !== '/' || url.search || url.hash)
-        throw new Error('OVERFLOW_DEPLOYSERVER_URL must be an HTTP loopback tunnel');
-    return url;
+    if (!value) return [];
+    return value.split(',').map(item => {
+        const url = new URL(item.trim());
+        if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password || url.pathname !== '/' || url.search || url.hash)
+            throw new Error('OVERFLOW_DEPLOYSERVER_URL must be HTTP loopback tunnels');
+        return url;
+    });
+}
+
+export function OverflowUrl() {
+    return OverflowUrls()[0];
+}
+
+async function WorkerLoad(url: URL): Promise<number> {
+    try {
+        const response = await fetch(new URL('/gameservers', url), {signal: AbortSignal.timeout(2000), redirect:'error'});
+        const body = await response.json() as any;
+        const {running, pending, limit} = body.capacity ?? {};
+        if (!response.ok || !Number.isFinite(running) || !Number.isFinite(pending) || !limit || limit <= 0) return Infinity;
+        return (running + pending) / limit;
+    } catch { return Infinity; }
+}
+
+// Least loaded worker first, so a second host shares hunts rather than waiting for the first to fill.
+async function OrderedWorkers(urls: URL[]) {
+    if (urls.length < 2) return urls;
+    const loads = await Promise.all(urls.map(WorkerLoad));
+    return urls.map((url, index) => ({url, load: loads[index], index}))
+        .sort((a, b) => a.load - b.load || a.index - b.index).map(item => item.url);
 }
 
 export async function RemoteLaunch(url: URL, body: Request): Promise<Connection | undefined> {
@@ -47,8 +73,15 @@ export class HuntRouter {
     private pending = 0;
     constructor(private localCount: () => number, private remote = RemoteLaunch, private localStatus?: () => {running:number,pending:number,limit:number|null}) {}
     async launch<T>(body: Request, local: () => Promise<T>): Promise<T | Connection> {
-        const url = OverflowUrl();
-        if (!url || body.GameMode !== 'ISLAND') return local();
+        const urls = OverflowUrls();
+        if (!urls.length || body.GameMode !== 'ISLAND') return local();
+        const remote = async () => {
+            for (const url of await OrderedWorkers(urls)) {
+                const result = await this.remote(url, body);
+                if (result) return result;
+            }
+            return undefined;
+        };
         const threshold = Number(process.env.OVERFLOW_AFTER_HUNTS ?? 4);
         if (!Number.isInteger(threshold) || threshold < 0) throw new Error('Invalid OVERFLOW_AFTER_HUNTS');
         const status=this.localStatus?.() ?? {running:this.localCount(),pending:this.pending,limit:HuntLimit()};
@@ -57,14 +90,14 @@ export class HuntRouter {
         this.pending++;
         try {
             if (preferRemote) {
-                const result = await this.remote(url, body);
+                const result = await remote();
                 if (result) return result;
             }
             try { const result=await local(); logger.info({huntId:body.HuntId,selected:'primary',host:(result as any)?.host,port:(result as any)?.port}, 'routing: selected'); return result; }
             catch (error) {
                 if (error instanceof CapacityUnavailable) logger.info({huntId:body.HuntId,reason:error.reason}, 'routing: local capacity rejection');
                 if (!(error instanceof CapacityUnavailable) || preferRemote) throw error;
-                const result = await this.remote(url, body);
+                const result = await remote();
                 if (result) return result;
                 throw error;
             }
@@ -73,12 +106,13 @@ export class HuntRouter {
 }
 
 export async function DescribeOverflow(): Promise<any[]> {
-    const url = OverflowUrl();
-    if (!url) return [];
-    try {
-        const response = await fetch(new URL('/gameservers', url), {signal: AbortSignal.timeout(1500), redirect: 'error'});
-        if (!response.ok) return [];
-        const body = await response.json() as any;
-        return Array.isArray(body.servers) ? body.servers.map((server: any) => ({...server, host: 'overflow'})) : [];
-    } catch { return []; }
+    const lists = await Promise.all(OverflowUrls().map(async url => {
+        try {
+            const response = await fetch(new URL('/gameservers', url), {signal: AbortSignal.timeout(1500), redirect: 'error'});
+            if (!response.ok) return [];
+            const body = await response.json() as any;
+            return Array.isArray(body.servers) ? body.servers.map((server: any) => ({...server, host: 'overflow'})) : [];
+        } catch { return []; }
+    }));
+    return lists.flat();
 }

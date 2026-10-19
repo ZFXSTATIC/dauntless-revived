@@ -1,6 +1,6 @@
 const finite = value => Number.isFinite(value) && value >= 0 ? value : null;
 const fresh = (at, limit, now) => Number.isFinite(Date.parse(at)) && now-Date.parse(at) <= limit && Date.parse(at) <= now+60000;
-export function fleetSummary(main, worker, mainError = null, now = Date.now(), aus = null, germany = null) {
+export function fleetSummary(main, worker, mainError = null, now = Date.now(), aus = null, germany = null, eu2 = null) {
   const mainOnline = !!main && !mainError && fresh(main.at,15000,now);
   const perf = main?.performance;
   const mainHunts = mainOnline && perf && !perf.stale && fresh(perf.at,150000,now) ? perf.processes.filter(p=>p.role==='hunt' || p.role==='tutorial').length : null;
@@ -8,7 +8,7 @@ export function fleetSummary(main, worker, mainError = null, now = Date.now(), a
     cpu:online ? finite(sample.cpu) : null, logicalCpus:sample?.logicalCpus ?? null,
     ramUsedMB:online ? finite(sample.ramUsedMB) : null,ramTotalMB:online ? finite(sample.ramTotalMB) : null,hunts:online ? hunts : null});
   const rows = [row('Server #1',mainOnline,main,mainHunts,perf?.at ?? null)];
-  for (const [name,node] of [['Server #2 · EU overflow',worker],['Server #3 · Australia',aus],['Server #4 · Germany',germany]]) {
+  for (const [name,node] of [['Server #2 · EU overflow',worker],['Server #3 · Australia',aus],['Server #4 · Germany',germany],['Server #5 · EU overflow',eu2]]) {
     if(!node?.configured)continue;
     const online = node.online && !!node.sample && fresh(node.sample.at,15000,now);
     rows.push(row(name,online,node.sample,Array.isArray(node.sample?.hunts) ? node.sample.hunts.filter(h=>!['city','dojo'].includes(h.kind)).length : null,node.sample?.at ?? null));

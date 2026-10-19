@@ -2,22 +2,24 @@ import {CapacityUnavailable} from './capacity';
 import { logger } from "../logger";
 import { GetRamsgateConnectionDetails, GetTrainingDojoConnectionDetails, StartupGameserverWithArgs, StartupGameserverWithHuntIdAndPlayers } from "./gameservers";
 import { Gameservers, KindOfGameserver, huntAdmission, DescribeGameservers } from './gameservers';
-import { HuntRouter, RemoteLaunch, OverflowUrl, DescribeOverflow } from './overflow';
+import { HuntRouter, RemoteLaunch, OverflowUrl, OverflowUrls, DescribeOverflow } from './overflow';
 import { CityRouter } from './cityrouter';
 import { NativeOccupancy } from './nativeoccupancy';
 import { RegionalRouter, RegionChoice } from './regions';
 
 const Regions = new RegionalRouter(async () => {
     const local = huntAdmission.status();
-    const url = OverflowUrl();
-    if (!url) return local;
-    try {
-        const response = await fetch(new URL('/gameservers', url), {signal:AbortSignal.timeout(2000),redirect:'error'});
-        const body = await response.json() as any;
-        if (!response.ok || !body.capacity) return local;
-        return {running:local.running + body.capacity.running, pending:local.pending + body.capacity.pending,
-            limit:local.limit !== null && body.capacity.limit !== null ? local.limit + body.capacity.limit : null};
-    } catch { return local; }
+    let total = local;
+    for (const url of OverflowUrls()) {
+        try {
+            const response = await fetch(new URL('/gameservers', url), {signal:AbortSignal.timeout(2000),redirect:'error'});
+            const body = await response.json() as any;
+            if (!response.ok || !body.capacity) continue;
+            total = {running:total.running + body.capacity.running, pending:total.pending + body.capacity.pending,
+                limit:total.limit !== null && body.capacity.limit !== null ? total.limit + body.capacity.limit : null};
+        } catch { continue; }
+    }
+    return total;
 });
 
 const Cities = new CityRouter(async () => {

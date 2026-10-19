@@ -60,3 +60,30 @@ test('remote HTTP contract preserves all hunt data and recognizes capacity', asy
     } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
     assert.equal(await RemoteLaunch(url, body), undefined);
 });
+test('several workers: least loaded takes the hunt, a refusing worker falls through to the next', async () => {
+    const serve = async (running: number) => {
+        const server = http.createServer((_req, res) => {
+            res.setHeader('connection', 'close');
+            res.end(JSON.stringify({servers: [], capacity: {running, pending: 0, limit: 10}}));
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        return server;
+    };
+    const busy = await serve(8), idle = await serve(1);
+    const port = (server: http.Server) => (server.address() as any).port;
+    const saved = process.env.OVERFLOW_DEPLOYSERVER_URL;
+    process.env.OVERFLOW_DEPLOYSERVER_URL = `http://127.0.0.1:${port(busy)},http://127.0.0.1:${port(idle)}`;
+    try {
+        const tried: number[] = [];
+        const first = new HuntRouter(() => 4, async url => { tried.push(Number(url.port)); return worker; });
+        assert.deepEqual(await first.launch(body, async () => local), worker);
+        assert.deepEqual(tried, [port(idle)]);
+        tried.length = 0;
+        const refusing = new HuntRouter(() => 4, async url => { tried.push(Number(url.port)); return Number(url.port) === port(idle) ? undefined : worker; });
+        assert.deepEqual(await refusing.launch(body, async () => local), worker);
+        assert.deepEqual(tried, [port(idle), port(busy)]);
+    } finally {
+        process.env.OVERFLOW_DEPLOYSERVER_URL = saved;
+        await Promise.all([busy, idle].map(s => new Promise<void>(resolve => s.close(() => resolve()))));
+    }
+});

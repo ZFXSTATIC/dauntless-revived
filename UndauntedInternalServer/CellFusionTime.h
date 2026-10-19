@@ -1,8 +1,13 @@
 #pragma once
+#include <Windows.h>
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
 #include <iostream>
+#include <string>
 
 #include "DataTables.h"
 #include "NativeDiagnostics.h"
@@ -12,10 +17,45 @@
 // TimeRequired (1.4.4: Uncommon->Rare 22 h, Rare->Epic 46 h, Epic->Epic 70 h). Set every recipe to
 // FusionHours in memory, in the client (what the Middleman screen shows) and the game servers (what a
 // started fusion's end time is built from).
+//
+// Local test only: a DLL installed under %LOCALAPPDATA%\DauntlessRevived\LocalServer\Game or
+// \LocalClient\Game that also has fusion-seconds.txt next to it uses that many seconds instead. Both
+// must hold, so a live or player install always gets FusionHours.
 namespace CellFusionTime {
 
 constexpr int64_t FusionHours = 1;
 constexpr int64_t TicksPerHour = 36000000000LL; // FTimespan ticks are 100 ns
+constexpr int64_t TicksPerSecond = 10000000LL;
+
+inline int64_t TestSeconds() {
+    HMODULE Module = nullptr;
+    char Path[MAX_PATH] = {};
+    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCSTR>(&TestSeconds), &Module) || !GetModuleFileNameA(Module, Path, MAX_PATH))
+        return 0;
+
+    std::string Lower = Path;
+    std::transform(Lower.begin(), Lower.end(), Lower.begin(), [](unsigned char C) { return static_cast<char>(std::tolower(C)); });
+    if (Lower.find("\\dauntlessrevived\\localserver\\game\\") == std::string::npos &&
+        Lower.find("\\dauntlessrevived\\localclient\\game\\") == std::string::npos)
+        return 0;
+
+    std::string File = Path;
+    File = File.substr(0, File.find_last_of('\\') + 1) + "fusion-seconds.txt";
+    std::ifstream In(File);
+    long long Seconds = 0;
+    if (!(In >> Seconds) || Seconds < 1 || Seconds > 86400)
+        return 0;
+    return Seconds;
+}
+
+inline int64_t WantedTicks() {
+    static const int64_t Wanted = [] {
+        const int64_t Seconds = TestSeconds();
+        return Seconds > 0 ? Seconds * TicksPerSecond : FusionHours * TicksPerHour;
+    }();
+    return Wanted;
+}
 
 inline SDK::UDataTable* Table = nullptr;
 inline int32_t TableIndex = -1;
@@ -35,8 +75,8 @@ inline bool Patch(SDK::UDataTable* DataTable) {
             continue;
         auto* Row = reinterpret_cast<SDK::FCellExchangeTableData*>(Map[I].Value());
         ++Rows;
-        if (Ticks(Row->TimeRequired) != FusionHours * TicksPerHour) {
-            Ticks(Row->TimeRequired) = FusionHours * TicksPerHour;
+        if (Ticks(Row->TimeRequired) != WantedTicks()) {
+            Ticks(Row->TimeRequired) = WantedTicks();
             ++Changed;
         }
     }
