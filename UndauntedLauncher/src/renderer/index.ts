@@ -764,7 +764,7 @@ function renderPlay(): void {
         parts = playRunning(snap);
         break;
     }
-    return [h("div", { class: "play-content" }, ...parts, partnerBanner())];
+    return [h("div", { class: "play-content" }, ...parts)];
   });
 }
 
@@ -886,7 +886,7 @@ function renderActionBar(): void {
     const v = taskView(task, state.lang);
     announce(v.indeterminate ? t(v.titleKey) : `${t(v.titleKey)}: ${Math.floor(v.percent / 10) * 10} %`);
   } else {
-    renderRegion(info, JSON.stringify([state.lang, snap.phase, snap.connect.checking, snap.connect.problem, snap.install.totalBytes]), () => [renderSteps(snap), h("div", { class: "action-hint" }, actionHint(snap))]);
+    renderRegion(info, JSON.stringify([state.lang, snap.phase, snap.connect.checking, snap.connect.problem, snap.install.totalBytes]), () => (snap.phase === "ready" || snap.phase === "running" ? [] : [renderSteps(snap)]).concat(h("div", { class: "action-hint" }, actionHint(snap))));
     fitSteps();
     announce(actionHint(snap));
   }
@@ -1136,26 +1136,11 @@ function renderNews(): void {
         );
       }
     }
-    return [h("div", { class: "page" }, h("h1", { class: "page-title", id: "news-title" }, title), ...body, partnerBanner())];
+    return [h("div", { class: "page" }, h("h1", { class: "page-title", id: "news-title" }, title), ...body)];
   });
 }
 
 // ------------------------------------------------------------------ partners page
-
-function partnerBanner(): HTMLElement {
-  const banner = h(
-    "button",
-    { type: "button", class: "partner-banner", "data-fk": "partner-banner", "aria-label": t("partner_banner_label") },
-    h("img", { src: partnerLogo, alt: "EU Gamehost", draggable: "false" }),
-    h("span", { class: "partner-banner-copy" },
-      h("span", { class: "partner-mini-label" }, t("partner_ad")),
-      h("strong", {}, t("partner_banner_title")),
-      h("span", { class: "partner-banner-cta" }, t("partner_banner_cta")),
-    ),
-  );
-  banner.addEventListener("click", () => setView("partners"));
-  return banner;
-}
 
 function partnerHostingCard(): HTMLElement {
   const plans: readonly { name: string; price: string; spec: string; target: ExternalTarget; note: StringKey }[] = [
@@ -1264,7 +1249,7 @@ function renderServer(): void {
   const sig = JSON.stringify([state.lang, snap?.server ?? null, snap?.savedServers ?? [], snap?.status ?? null, snap?.phase, snap?.connect.problem, snap?.busy, !!snap?.task, snap?.game.running, minute]);
   renderRegion(container, sig, () => {
     if (!snap?.server) {
-      return [h("div", { class: "page" }, h("h1", { class: "page-title", id: "server-title" }, t("nav_server")), card("", h("p", { class: "card-text" }, t("sp_nojoin"))), partnerBanner())];
+      return [h("div", { class: "page" }, h("h1", { class: "page-title", id: "server-title" }, t("nav_server")), card("", h("p", { class: "card-text" }, t("sp_nojoin"))))];
     }
     const sv = snap.server;
     const status = snap.status;
@@ -1283,7 +1268,6 @@ function renderServer(): void {
     const parts: HTMLElement[] = [
       h("h1", { class: "page-title", id: "server-title" }, serverName()),
       h("p", { class: "page-sub" }, t("server_auto")),
-      partnerBanner(),
       card("", kv, h("div", { class: "card-row", style: undefined }, button(t("sp_refresh"), () => void api.refreshStatus(), { icon: "refresh", fk: "srv-refresh" }), status?.sourceUrl ? linkButton(t("sp_source"), () => open("server_source"), { icon: "external", fk: "srv-source" }) : null)),
     ];
     if (status?.limited) {
@@ -1881,9 +1865,6 @@ function renderRail(): void {
     );
     return [toggle, menu];
   });
-  for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>("#lang-switch .lang-btn"))) {
-    b.setAttribute("aria-pressed", b.dataset.lang === state.lang ? "true" : "false");
-  }
   const credits = $("#credits-btn");
   if (state.view === "credits") credits.setAttribute("aria-current", "page");
   else credits.removeAttribute("aria-current");
@@ -1942,7 +1923,8 @@ function applyStaticI18n(): void {
   keyInput.placeholder = t("reg_key_placeholder");
   existingGameInput.placeholder = t("install_existing_placeholder");
   $("#win-max").setAttribute("aria-label", t(state.maximized ? "window_restore" : "window_maximize"));
-  $("#github-btn").title = t("github_link");
+  for (const id of ["github", "discord", "patreon"]) $(`#${id}-btn`).title = t(`${id}_link` as StringKey);
+  $("#credits-btn").title = t("nav_credits");
 }
 
 function renderAll(): void {
@@ -2286,9 +2268,6 @@ function initChrome(): void {
     max.replaceChildren(icon(maximized ? "restore" : "maximize"));
     max.setAttribute("aria-label", t(maximized ? "window_restore" : "window_maximize"));
   });
-  for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>("#lang-switch .lang-btn"))) {
-    b.addEventListener("click", () => void api.setSettings({ language: LANGUAGES.find((l) => l === b.dataset.lang) ?? "en" }));
-  }
   // Credits, Discord and GitHub live in the rail, so they are available on every page, invite or not.
   const credits = $("#credits-btn");
   credits.prepend(icon("heart"));
@@ -2299,7 +2278,16 @@ function initChrome(): void {
   $("#eugamehost-btn").addEventListener("click", () => setView("partners"));
   $("#discord-btn").addEventListener("click", () => open("discord"));
   $("#patreon-btn").addEventListener("click", () => open("patreon"));
-  document.addEventListener("visibilitychange", () => void api.setStatusPolling(!document.hidden));
+  // Nobody is watching the background while the window is in the background: park its animation.
+  const syncIdle = (): void => {
+    $("#hero").classList.toggle("idle", document.hidden || !document.hasFocus());
+  };
+  window.addEventListener("focus", syncIdle);
+  window.addEventListener("blur", syncIdle);
+  document.addEventListener("visibilitychange", () => {
+    syncIdle();
+    void api.setStatusPolling(!document.hidden);
+  });
   window.setInterval(() => {
     renderPanel();
     if (state.view === "server") renderServer();
@@ -2492,7 +2480,6 @@ function initPlayMenu(): void {
 
 async function main(): Promise<void> {
   initChrome();
-  buildScene();
   applyStaticI18n();
   renderAll();
   api.onSnapshot(onSnapshot);
@@ -2506,6 +2493,8 @@ async function main(): Promise<void> {
   onSnapshot(await api.getSnapshot());
   onOfflineStatus(await api.offlineStatus());
   void api.setStatusPolling(!document.hidden);
+  // The background scene is a few hundred SVG nodes: build it after the first paint of the page.
+  window.requestAnimationFrame(() => window.setTimeout(buildScene, 0));
   await checkInviteLink();
 }
 

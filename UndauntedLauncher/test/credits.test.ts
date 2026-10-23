@@ -208,9 +208,9 @@ test("the page opens links by name only, and community/source controls are in th
   const html = readFileSync(path.join(ROOT, "index.html"), "utf8");
   const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf("</nav>"));
   assert.match(rail, /<button type="button" class="icon-btn" id="github-btn" data-i18n-aria="github_link"><\/button>/);
-  assert.match(rail, /<button type="button" class="rail-link" id="credits-btn">/);
-  assert.match(rail, /<button type="button" class="social-button" id="discord-btn">/);
-  assert.match(rail, /<button type="button" class="social-button" id="patreon-btn">/);
+  assert.match(rail, /<button type="button" class="icon-btn" id="credits-btn" data-i18n-aria="nav_credits"><\/button>/);
+  assert.match(rail, /<button type="button" class="icon-btn" id="discord-btn" data-i18n-aria="discord_link">/);
+  assert.match(rail, /<button type="button" class="icon-btn" id="patreon-btn" data-i18n-aria="patreon_link">/);
   assert.match(html, /<section class="view" id="view-credits" aria-labelledby="credits-title" hidden><\/section>/);
 });
 

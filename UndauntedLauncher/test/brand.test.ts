@@ -177,7 +177,7 @@ test("the page's images are local brand files, and the logo has a translated tex
 
 test("the built-in background stays still for reduced motion, while the game runs and under a host's art", () => {
   assert.match(CODE, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*\.scene \*\s*\{\s*animation: none !important;/);
-  assert.match(CODE, /\.hero\.game-running \.scene \*,\s*\.hero\.has-art \.scene \*\s*\{\s*animation-play-state: paused !important;/);
+  assert.match(CODE, /\.hero\.game-running \.scene \*,\s*\.hero\.idle \.scene \*,\s*\.hero\.has-art \.scene \*\s*\{\s*animation-play-state: paused !important;/);
   // Only compositor-friendly properties are animated in the scene.
   for (const name of ["twinkle", "aurora", "drift", "fall"]) {
     const frames = CODE.slice(CODE.indexOf(`@keyframes ${name} {`));

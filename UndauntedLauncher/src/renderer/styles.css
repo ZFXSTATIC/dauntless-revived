@@ -824,10 +824,10 @@ img {
 
 .social-icon {
   display: block;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
-  background: var(--dr-frost);
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  background: currentColor;
   -webkit-mask: var(--social-mark) center / contain no-repeat;
   mask: var(--social-mark) center / contain no-repeat;
 }
@@ -867,7 +867,24 @@ img {
   gap: 8px;
 }
 
+.rail-foot > * {
+  min-width: 0;
+}
+
+.rail-icons {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.rail-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rail-link {
+  flex: 0 1 auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -920,6 +937,16 @@ img {
   background: var(--dr-deep);
   border-color: var(--edge);
   color: var(--dr-frost);
+}
+
+.icon-btn[aria-current="page"] {
+  background: var(--dr-deep);
+  color: var(--dr-frost);
+}
+
+.icon-btn .icon {
+  width: 17px;
+  height: 17px;
 }
 
 .icon-btn .mark {
@@ -1246,6 +1273,7 @@ img {
 
 /* Held still while the game runs next to the launcher, and under a host's art. */
 .hero.game-running .scene *,
+.hero.idle .scene *,
 .hero.has-art .scene * {
   animation-play-state: paused !important;
 }
