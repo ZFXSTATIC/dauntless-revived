@@ -39,7 +39,7 @@ export function summarize(boxes) {
   let players=0,hunts=0,huntMax=0;
   for(const box of boxes) {
     const info=boxInfo(0,box);
-    players+=info.players; hunts+=info.running; huntMax+=info.max;
+    players+=info.players; hunts+=info.running; huntMax+=info.limit;
   }
   return {Players:players,Hunts:hunts,HuntsMax:huntMax,PlayersMax:huntMax*4};
 }
@@ -78,8 +78,8 @@ export const isFull=b=>b.up && b.limit>0 && (b.running>=b.limit || b.blocked);
 export function statusEmbed(infos,loggedIn=null) {
   const full=infos.filter(isFull).length, down=infos.filter(b=>!b.up).length;
   const color=down||full===infos.length ? 0xe5484d : full ? 0xf2a33a : 0x4cc38a;
-  const line=b=>!b.up ? '🔴 not answering' : `${isFull(b)?'🟠':'🟢'} ${b.running}/${b.max} hunts, ${b.players} in game`;
-  const tot=infos.filter(b=>b.up).reduce((t,b)=>({r:t.r+b.running,l:t.l+b.max,p:t.p+b.players}),{r:0,l:0,p:0});
+  const line=b=>!b.up ? '🔴 not answering' : `${isFull(b)?'🟠':'🟢'} ${b.running}/${b.limit} hunts, ${b.players} in game`;
+  const tot=infos.filter(b=>b.up).reduce((t,b)=>({r:t.r+b.running,l:t.l+b.limit,p:t.p+b.players}),{r:0,l:0,p:0});
   return new EmbedBuilder().setTitle('Dauntless Revived server status').setColor(color)
     .addFields(infos.map(b=>({name:b.name,value:line(b),inline:true})))
     .addFields({name:'Total',value:`${tot.r}/${tot.l} hunts, ${loggedIn==null?tot.p+' players online':loggedIn+' online ('+tot.p+' in a game)'}`})
