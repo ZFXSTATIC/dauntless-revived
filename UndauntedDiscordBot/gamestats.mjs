@@ -6,12 +6,13 @@ export function parsePorts(value) {
   return ports.length ? ports : DEFAULT_PORTS;
 }
 export function summarize(boxes) {
-  let players=0,hunts=0;
+  let players=0,hunts=0,huntLimit=0;
   for(const box of boxes) {
     for(const s of box.servers||[]) players+=Number(s.connectedPlayers)||0;
     hunts+=Number(box.capacity?.running)||0;
+    huntLimit+=Number(box.capacity?.limit)||0;
   }
-  return {Players:players,Hunts:hunts};
+  return {Players:players,Hunts:hunts,PlayersMax:huntLimit*4,HuntsMax:huntLimit};
 }
 export async function fetchStats(ports,fetchImpl=fetch) {
   const boxes=[];
@@ -23,7 +24,7 @@ export async function fetchStats(ports,fetchImpl=fetch) {
   }
   return boxes.length ? summarize(boxes) : null;
 }
-export const LABELS={Players:'Players Online',Hunts:'Hunts Running'};
+export const LABELS={Players:'Players',Hunts:'Hunts'};
 
 export class GameStats {
   constructor(client,counters,ports) {Object.assign(this,{client,counters,ports});}
@@ -36,7 +37,7 @@ export class GameStats {
     const channels=await guild.channels.fetch();
     cfg.stats ??= {};
     for(const key of Object.keys(LABELS)) {
-      const name=`${LABELS[key]} : ${stats[key]}`;
+      const name=`${LABELS[key]} : ${stats[key]}/${stats[key+'Max']}`;
       let channel=cfg.stats[key] ? channels.get(cfg.stats[key]) : undefined;
       if(!channel) channel=[...channels.values()].find(c=>c?.parentId===category.id && c.type===ChannelType.GuildVoice && c.name.startsWith(`${LABELS[key]} : `));
       if(!channel) channel=await guild.channels.create({name,type:ChannelType.GuildVoice,parent:category.id,permissionOverwrites:[
