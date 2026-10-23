@@ -849,6 +849,44 @@
   background: rgb(23 64 95 / 0.3);
 }
 
+/* ---- one clarity for every panel, bar and card in every theme: --clear-pct is how much fill is left over the art */
+:root[data-theme] {
+  --clear-pct: 7%;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) :is(.card, .account-chip, .partner-mini, .settings-panel, .instance, .mod-card, .server-panel, .actionbar, .rail, .titlebar) {
+  background: color-mix(in srgb, var(--calm-bg) var(--clear-pct), transparent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) :is(.mod-card, .partner-mini, .account-switch):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--calm-raised) 16%, transparent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel > .card {
+  background: none;
+}
+:root[data-theme="classic"] {
+  --cg: color-mix(in srgb, #041220 var(--clear-pct), transparent);
+  --dl-panel: color-mix(in srgb, #041220 var(--clear-pct), transparent);
+}
+:root[data-theme="classic"] :is(.card, .account-chip, .partner-mini, .partner-banner, .settings-panel, .instance) {
+  background: var(--cg);
+}
+:root[data-theme="classic"] :is(.mod-card, .server-panel, .actionbar, .rail, .titlebar) {
+  background: color-mix(in srgb, #041220 var(--clear-pct), transparent);
+}
+:root[data-theme="classic"] :is(.mod-card, .partner-mini, .partner-banner):hover:not(:disabled) {
+  background: color-mix(in srgb, #17405f 16%, transparent);
+}
+:root[data-theme="classic"] .settings-panel > .card {
+  background: none;
+}
+/* No haze behind the panels: the art stays sharp. The text gets a thin shadow instead so it still reads. */
+:root[data-theme] :is(.card, .settings-panel, .server-panel) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:root[data-theme] :is(.stage, .server-panel, .rail, .actionbar) {
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.75), 0 0 1px rgb(0 0 0 / 0.6);
+}
+
 /* The theme picker's previews: each theme's own colours, whichever theme is on. */
 .swatch-classic { background: #0c2b48; }
 .swatch-classic i:first-child { background: #1d4f78; }
