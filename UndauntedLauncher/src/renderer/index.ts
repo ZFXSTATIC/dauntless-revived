@@ -47,11 +47,17 @@ function storedTheme(): Theme | null {
   }
 }
 let theme: Theme = THEMES_ENABLED ? storedTheme() ?? "classic" : "classic";
-if (THEMES_ENABLED) document.documentElement.dataset.theme = theme;
+// Classic keeps the Dauntless-menu look (dauntless-style.css). The other themes do not load any of it:
+// they are drawn from the base styles (styles.css) and their own file (calm-style.css).
+function paintTheme(next: Theme): void {
+  document.documentElement.dataset.theme = next;
+  document.documentElement.dataset.style = next === "classic" ? "dauntless" : "flat";
+}
+if (THEMES_ENABLED) paintTheme(theme);
 function setTheme(next: Theme): void {
   if (!THEMES_ENABLED) return;
   theme = next;
-  document.documentElement.dataset.theme = next;
+  paintTheme(next);
   try {
     window.localStorage.setItem("dr-theme", next);
   } catch {
