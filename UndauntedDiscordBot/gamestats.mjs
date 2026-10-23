@@ -17,21 +17,31 @@ export function serverPlayers(s) {
   if(Number.isFinite(n) && n>=0) return n;
   return Array.isArray(s.expectedPlayers) ? s.expectedPlayers.length : 0;
 }
+// MAIN's own list also repeats the games of the remote workers (they carry host/region), so only count a server once:
+// entries with a host/region belong to the worker whose own list already has them.
+export const isLocal=s=>!s.host && !s.region;
+// Hunts a box can really take: its limit, or fewer when the CPU guard would stop it first (CPU per running hunt).
+export function effectiveLimit(running,limit,cpuPercent,guardLimit) {
+  if(!(limit>0)) return 0;
+  if(!(running>0) || !Number.isFinite(cpuPercent) || !(guardLimit>0) || cpuPercent<=0) return limit;
+  return Math.max(running,Math.min(limit,Math.floor(running*guardLimit/cpuPercent)));
+}
 export function boxInfo(port,json) {
   const cap=json?.capacity||{};
-  const players=(json?.servers||[]).reduce((n,s)=>n+serverPlayers(s),0);
+  const players=(json?.servers||[]).filter(isLocal).reduce((n,s)=>n+serverPlayers(s),0);
   const cpu=Number(cap.cpu?.percent);
-  return {port,name:BOX_NAMES[port]||`port ${port}`,up:!!json,running:Number(cap.running)||0,limit:Number(cap.limit)||0,
+  const running=Number(cap.running)||0, limit=Number(cap.limit)||0;
+  return {port,name:BOX_NAMES[port]||`port ${port}`,up:!!json,running,limit,
+    max:effectiveLimit(running,limit,cpu,Number(cap.cpu?.limit)),
     players,cpu:Number.isFinite(cpu)?cpu:null,blocked:!!cap.cpu?.blocked};
 }
 export function summarize(boxes) {
-  let players=0,hunts=0,huntLimit=0;
+  let players=0,hunts=0,huntMax=0;
   for(const box of boxes) {
-    for(const s of box.servers||[]) players+=serverPlayers(s);
-    hunts+=Number(box.capacity?.running)||0;
-    huntLimit+=Number(box.capacity?.limit)||0;
+    const info=boxInfo(0,box);
+    players+=info.players; hunts+=info.running; huntMax+=info.max;
   }
-  return {Players:players,Hunts:hunts,PlayersMax:huntLimit*4,HuntsMax:huntLimit};
+  return {Players:players,Hunts:hunts,HuntsMax:huntMax};
 }
 export async function fetchBoxes(ports,fetchImpl=fetch) {
   const out=[];
@@ -68,8 +78,8 @@ export const isFull=b=>b.up && b.limit>0 && (b.running>=b.limit || b.blocked);
 export function statusEmbed(infos,loggedIn=null) {
   const full=infos.filter(isFull).length, down=infos.filter(b=>!b.up).length;
   const color=down||full===infos.length ? 0xe5484d : full ? 0xf2a33a : 0x4cc38a;
-  const line=b=>!b.up ? '🔴 not answering' : `${isFull(b)?'🟠':'🟢'} ${b.running}/${b.limit} hunts, ${b.players} players`;
-  const tot=infos.filter(b=>b.up).reduce((t,b)=>({r:t.r+b.running,l:t.l+b.limit,p:t.p+b.players}),{r:0,l:0,p:0});
+  const line=b=>!b.up ? '🔴 not answering' : `${isFull(b)?'🟠':'🟢'} ${b.running}/${b.max} hunts, ${b.players} in game`;
+  const tot=infos.filter(b=>b.up).reduce((t,b)=>({r:t.r+b.running,l:t.l+b.max,p:t.p+b.players}),{r:0,l:0,p:0});
   return new EmbedBuilder().setTitle('Dauntless Revived server status').setColor(color)
     .addFields(infos.map(b=>({name:b.name,value:line(b),inline:true})))
     .addFields({name:'Total',value:`${tot.r}/${tot.l} hunts, ${loggedIn==null?tot.p+' players online':loggedIn+' online ('+tot.p+' in a game)'}`})
@@ -157,7 +167,7 @@ export class GameStats {
     const channels=await guild.channels.fetch();
     cfg.stats ??= {};
     for(const key of Object.keys(LABELS)) {
-      const name=`${LABELS[key]} : ${stats[key]}/${stats[key+'Max']}`;
+      const name=key==='Hunts' ? `Hunts : ${stats.Hunts}/${stats.HuntsMax}` : `Players : ${stats.Players}`;
       let channel=cfg.stats[key] ? channels.get(cfg.stats[key]) : undefined;
       if(!channel) channel=[...channels.values()].find(c=>c?.parentId===category.id && c.type===ChannelType.GuildVoice && c.name.startsWith(`${LABELS[key]} : `));
       if(!channel) channel=await guild.channels.create({name,type:ChannelType.GuildVoice,parent:category.id,permissionOverwrites:[
