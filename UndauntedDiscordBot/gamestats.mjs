@@ -5,23 +5,23 @@ export function parsePorts(value) {
   const ports=String(value||'').split(',').map(p=>Number(p.trim())).filter(p=>Number.isInteger(p) && p>0 && p<65536);
   return ports.length ? ports : DEFAULT_PORTS;
 }
-export function summarize(lists) {
+export function summarize(boxes) {
   let players=0,hunts=0;
-  for(const servers of lists) for(const s of servers) {
-    players+=Number(s.connectedPlayers)||0;
-    if(s.kind==='hunt') hunts++;
+  for(const box of boxes) {
+    for(const s of box.servers||[]) players+=Number(s.connectedPlayers)||0;
+    hunts+=Number(box.capacity?.running)||0;
   }
   return {Players:players,Hunts:hunts};
 }
 export async function fetchStats(ports,fetchImpl=fetch) {
-  const lists=[];
+  const boxes=[];
   for(const port of ports) {
     try {
       const res=await fetchImpl(`http://127.0.0.1:${port}/gameservers`,{signal:AbortSignal.timeout(5000)});
-      if(res.ok) lists.push((await res.json()).servers||[]);
+      if(res.ok) boxes.push(await res.json());
     } catch {}
   }
-  return lists.length ? summarize(lists) : null;
+  return boxes.length ? summarize(boxes) : null;
 }
 export const LABELS={Players:'Players Online',Hunts:'Hunts Running'};
 
