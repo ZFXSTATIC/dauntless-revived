@@ -20,6 +20,7 @@ import { setSink } from "../src/main/log";
 import { KeyStore } from "../src/main/keystore";
 import type { SpawnFn } from "../src/main/launch";
 import type { Snapshot } from "../src/shared/types";
+import { primaryButton } from "../src/shared/ui-model";
 import { FakeContentServer, FakeMetagame, makeFiles, manifestFor, sha256, TEST_BUILD } from "./fakes";
 import { makeTestCert, type TestCert } from "./certs";
 
@@ -55,7 +56,7 @@ function temp(prefix: string): string {
 before(async () => {
   cert = makeTestCert();
   other = makeTestCert();
-  meta = new FakeMetagame({ name: "Friday Hunts", validCodes: new Set(["ABCD-EFGH-JKLM", "SECOND-CODE", "THIRD-CODE", "FOURTH-CODE", "FIFTH-CODE", "SIXTH-CODE", "EXPOSURE-CODE", "EXISTING-CODE", "PICKED-CODE"]) });
+  meta = new FakeMetagame({ name: "Friday Hunts", validCodes: new Set(["ABCD-EFGH-JKLM", "SECOND-CODE", "THIRD-CODE", "FOURTH-CODE", "FIFTH-CODE", "SIXTH-CODE", "EXPOSURE-CODE", "QUEUE-CODE", "EXISTING-CODE", "PICKED-CODE"]) });
   content = new FakeContentServer({ key: "unused", files });
   gateway = https.createServer({ cert: cert.certPem, key: cert.keyPem }, (req, res) => {
     gatewayRequests.push(`${req.method} ${req.url}`);
@@ -121,6 +122,7 @@ function harness(relayPort = RELAY_PORT, userDataDir?: string, chooseFolder: Pla
     manifest,
     gameConfigDir: configDir,
     relayPort,
+    queuePollMs: 20,
     exePin: { relativePath: EXE, sha256: sha256(files.find((f) => f.path === EXE)!.data) },
     chooseFolder,
     chooseSaveFile: async () => null,
@@ -237,6 +239,47 @@ test("public mode end to end: join, register, install, play through the relay, g
   assert.deepEqual(rejected, {ok:false,error:{code:'key_rejected'}});
   assert.equal(hx.spawns.length, 2, 'rejected key never starts a game process');
   meta.users.set(key, storedUser);
+  await hx.c.shutdown();
+});
+
+test("a busy host queues PLAY: the place shows, the game starts when admitted, and leaving starts nothing", async () => {
+  const hx = harness();
+  await hx.c.init();
+  assert.deepEqual(await hx.c.submitInvite(invite(cert.fingerprint, "QUEUE-CODE")), { ok: true });
+  assert.deepEqual(await hx.c.register("Queue_1"), { ok: true, username: "Queue_1" });
+  assert.deepEqual(await hx.c.startInstall(), { ok: true });
+
+  meta.queueAnswers = [
+    { state: "queued", position: 3, length: 5 },
+    { state: "queued", position: 1, length: 4 },
+    { state: "ready", expiresInSeconds: 180 },
+  ];
+  const seen: (Snapshot["queue"])[] = [];
+  const done = hx.c.play();
+  for (let i = 0; i < 50 && seen.length < 2; i++) {
+    await new Promise((r) => setTimeout(r, 10));
+    const q = hx.last().queue;
+    if (q && JSON.stringify(seen.at(-1)) !== JSON.stringify(q)) seen.push(q);
+  }
+  assert.deepEqual(await done, { ok: true });
+  assert.deepEqual(seen, [{ position: 3, length: 5 }, { position: 1, length: 4 }]);
+  assert.equal(hx.last().phase, "running");
+  assert.equal(hx.last().queue, null);
+  assert.equal(hx.spawns.length, 1);
+  hx.child()!.emit("exit", 0);
+  await new Promise((r) => setTimeout(r, 100));
+
+  meta.queueAnswers = Array.from({ length: 100 }, () => ({ state: "queued", position: 2, length: 2 }));
+  const left = hx.c.play();
+  for (let i = 0; i < 50 && !hx.last().queue; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(primaryButton(hx.last(), { inviteValid: false, usernameValid: false }).action, "leave_queue");
+  hx.c.leaveQueue();
+  assert.deepEqual(await left, { ok: false, error: { code: "cancelled" } });
+  assert.equal(hx.spawns.length, 1, "leaving the queue never starts the game");
+  assert.equal(meta.queueCalls.at(-1)?.leave, true, "the host is told the place is free");
+  assert.equal(hx.last().queue, null);
+  assert.equal(hx.last().lastError, null);
+  meta.queueAnswers = [];
   await hx.c.shutdown();
 });
 

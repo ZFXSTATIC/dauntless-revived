@@ -723,7 +723,7 @@ function actionHint(snap: Snapshot): string {
     case "update":
       return t("hint_update");
     case "ready":
-      return t("hint_ready");
+      return snap.queue ? t("hint_queue", { position: String(snap.queue.position), length: String(snap.queue.length) }) : t("hint_ready");
     case "running":
       return t("hint_running");
     default:
@@ -757,7 +757,7 @@ function renderActionBar(): void {
     const v = taskView(task, state.lang);
     announce(v.indeterminate ? t(v.titleKey) : `${t(v.titleKey)}: ${Math.floor(v.percent / 10) * 10} %`);
   } else {
-    renderRegion(info, JSON.stringify([state.lang, snap.phase, snap.connect.checking, snap.connect.problem, snap.install.totalBytes]), () => [renderSteps(snap), h("div", { class: "action-hint" }, actionHint(snap))]);
+    renderRegion(info, JSON.stringify([state.lang, snap.phase, snap.connect.checking, snap.connect.problem, snap.install.totalBytes, snap.queue ?? null]), () => [renderSteps(snap), h("div", { class: "action-hint" }, actionHint(snap))]);
     announce(actionHint(snap));
   }
 }
@@ -814,6 +814,9 @@ async function onPrimary(): Promise<void> {
       break;
     case "play":
       result = await api.play();
+      break;
+    case "leave_queue":
+      await api.leaveQueue();
       break;
     case "pause":
       await api.pauseTask();

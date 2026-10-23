@@ -13,7 +13,7 @@ describe("the /undaunted/api routes", () => {
         }
     });
 
-    it("only Register (POST), GetUserInfo, ServerStatus and RegistrationStatus (GET) pass; every other route is 403", () => {
+    it("only Register (POST), GetUserInfo, ServerStatus, RegistrationStatus (GET) and Queue (POST) pass; every other route is 403", () => {
         let Passed = 0;
         for(const Route of Routes){
             const Choice = Classify(Route.method, Route.path, {}, false);
@@ -27,7 +27,8 @@ describe("the /undaunted/api routes", () => {
                 assert.equal(Choice.action === "reject" && Choice.reason, "admin_route");
             }
         }
-        assert.equal(Passed, 4);
+        assert.equal(Passed, 5);
+        assert.equal(Classify("GET", "/undaunted/api/Queue", {}, false).action, "reject");
         // POST RegistrationStatus changes the registration mode: admin only, blocked.
         assert.equal(Classify("POST", "/undaunted/api/RegistrationStatus", {}, false).action, "reject");
         assert.equal(Classify("HEAD", "/undaunted/api/Register", {}, false).action, "reject");

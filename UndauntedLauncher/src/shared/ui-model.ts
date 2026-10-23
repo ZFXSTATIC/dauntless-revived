@@ -6,7 +6,7 @@ import type { ExposureMode, GraphicsPreset, Language, Phase, Snapshot, TaskProgr
 import type { InstanceKind, PlayerWhere } from "./status";
 import { formatBytes, formatDuration, formatPercent, formatSpeed } from "./format";
 
-export type PrimaryAction = "join" | "retry" | "new_invite" | "register" | "install" | "update" | "play" | "pause" | "resume" | "none";
+export type PrimaryAction = "join" | "retry" | "new_invite" | "register" | "install" | "update" | "play" | "pause" | "resume" | "leave_queue" | "none";
 
 export interface PrimaryButton {
   labelKey: StringKey;
@@ -52,6 +52,7 @@ export function primaryButton(s: Snapshot, form: FormState): PrimaryButton {
     case "update":
       return { labelKey: busy ? "btn_wait" : "btn_update", action: "update", disabled: busy };
     case "ready":
+      if (s.queue) return { labelKey: "btn_leave_queue", action: "leave_queue", disabled: false };
       return { labelKey: busy ? "btn_wait" : "btn_play", action: "play", disabled: busy };
     case "running":
       return { labelKey: "btn_running", action: "none", disabled: true };

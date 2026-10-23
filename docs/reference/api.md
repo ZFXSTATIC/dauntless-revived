@@ -620,8 +620,9 @@ reward routes `PUT /slayerlink/links/rewards` and `GET /slayerlink/links/rewards
 ## Metagame: the management API {#undaunted-api}
 
 All of these live under `/undaunted/api/` on the metagame; the paths below are relative to it.
-**Through the gateway only four answer:**
-`POST Register` and `GET`/`HEAD` of `GetUserInfo`, `ServerStatus` and `RegistrationStatus`. Every other
+**Through the gateway only these answer:**
+`POST Register`, `GET`/`HEAD` of `GetUserInfo`, `ServerStatus` and `RegistrationStatus`, `GET`/`HEAD`/`POST HuntRegion`
+and `POST Queue`. Every other
 path under `/undaunted`, including `UsernameAvailable`, `PublicOnlineStats`, `PartyInvite`,
 `Friends` and the guild routes, gets 403 from the gateway. Run the rest on the server itself (in public mode at
 `http://127.0.0.1:61000`), or in private mode from a machine that can reach the metagame.
@@ -634,6 +635,7 @@ path under `/undaunted`, including `UsernameAvailable`, `PublicOnlineStats`, `Pa
 | GET | `UsernameAvailable` | none | no | `?Username=`: `{available}`, plus `error` and `message` when it is not. Checks the rules and the existing accounts only; registering can still lose a race. Nothing in the repository calls it. |
 | GET | `GetUserInfo` | account key | yes | `{UserId, Username, IsAdmin}` for the key's account. The launcher, the friend kit and the content server use it to check a key. |
 | GET | `ServerStatus` | registered | yes | The server's name, version, source and player list for the launcher; see [ServerStatus](#serverstatus). Never 401. |
+| POST | `Queue` | account key | yes, POST only | The launcher's launch queue; see [Hunt overflow](../operations/overflow.md#fleet-lock-and-launch-queue). Answers `{state: "open"}`, `{state: "queued", position, length}` or `{state: "ready", expiresInSeconds}`. Body `{leave: true}` gives the place up. |
 | GET | `PublicOnlineStats` | account key | no | `{NumActivePlayers}`: players with a heartbeat in the last 90 seconds. |
 | POST | `PartyInvite` | account key (admin key for `From`) | no | `{Username, From?}`: the key's owner invites that player to their party; the friend still accepts in the game. Answers `{From, To}`. |
 | POST | `Friends` | account key (admin key for `From`) | no | `{Username, From?}`: sends a friend request, or accepts the one that player sent. Answers `{From, To, Result}`, `Result` = `requested`, `accepted`, `already_friends` or `already_requested`. |

@@ -227,6 +227,9 @@ export class FakeMetagame {
   readonly registrations: { username: string; code: string }[] = [];
   // Every ServerStatus request: did it carry a key header, and was it a known account's key?
   readonly statusCalls: { withKey: boolean; registered: boolean }[] = [];
+  // Answers for POST /undaunted/api/Queue, one per poll; none left: 404, like a host without the queue.
+  queueAnswers: unknown[] = [];
+  readonly queueCalls: { leave: boolean }[] = [];
   readonly users = new Map<string, { username: string; id: string }>(); // key -> user
   private server: http.Server | null = null;
   private counter = 0;
@@ -307,6 +310,18 @@ export class FakeMetagame {
       if (!held) return answer();
       held.arrived();
       void held.gate.then(answer);
+      return;
+    }
+    if (url.pathname === "/undaunted/api/Queue" && req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        const leave = body.includes('"leave":true');
+        this.queueCalls.push({ leave });
+        if (leave) return this.json(res, 200, { state: "open" });
+        const answer = this.queueAnswers.shift();
+        return answer === undefined ? this.json(res, 404, {}) : this.json(res, 200, answer);
+      });
       return;
     }
     if (url.pathname === "/undaunted/api/GetUserInfo") {

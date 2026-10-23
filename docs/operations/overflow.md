@@ -59,3 +59,27 @@ For read-only diagnostics, the DLL exports `DR_ServerTickCount` and
 `DR_ServerSimulatedSeconds`. Sample their differences over a measured interval to
 check actual frame pacing and simulation time. Do not use the network driver's
 internal tag at offset 0x2AC as a frame counter: replication also advances it.
+
+## Fleet lock and launch queue
+
+The main deploy server's `GET /gameservers` adds a `fleet` object: the hunt slots summed over the
+main host and every configured worker (`OVERFLOW_DEPLOYSERVER_URL`, `AUS_DEPLOYSERVER_URL`,
+`GERMANY_DEPLOYSERVER_URL`), with `locked`, `running`, `pending`, `limit`, `free` and `percent`.
+The fleet locks once running plus pending hunts reach `FLEET_LOCK_PERCENT` (default 90) of the
+summed limit, or when every reachable host is CPU blocked, and unlocks only at or below
+`FLEET_RESUME_PERCENT` (default 75). A worker that does not answer adds no slots. With no host
+readable at all the fleet stays locked. Hosts without a numeric hunt limit leave `limit` null,
+so only the CPU rule can lock the fleet.
+
+While the fleet is locked, the launcher asks the metagame's `POST /undaunted/api/Queue` after
+PLAY and waits there instead of starting the game. It shows the player's place and a LEAVE QUEUE
+button, and asks again every 5 seconds. Places go in arrival order. A place that is not asked
+about for 20 seconds is dropped. Once the fleet unlocks, the front of the line gets a 3-minute
+ticket, one per free slot not already held by a ticket, and the game starts by itself.
+If there is no line and the fleet is open, PLAY starts the game at once.
+
+Limits: the queue is in metagame memory, so a restart empties it and waiting launchers join
+again at the back. It gates only the launcher's PLAY. Players already in the game, and
+clients started without the launcher, are not held back; the deploy server's own capacity
+refusals still apply to them. An unreadable deploy server, an older host without the route,
+or `LAUNCH_QUEUE=0` on the metagame means nobody is queued.

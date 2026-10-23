@@ -297,6 +297,7 @@ const EXPECTED_ROUTES = [
     "POST /loadout/:userId/:characterId/active/:index [RealProgressionOnly, HasUndauntedMetagameAuth]",
     "GET /loadout/:userId/:characterId/all [HasUndauntedMetagameAuth]",
     "POST /loadout/:userId/:characterId/:index [HasUndauntedMetagameAuth]",
+    "POST /undaunted/api/Queue [HasUndauntedUserApiKey]",
     "GET /undaunted/api/HuntRegion [HasUndauntedUserApiKey]",
     "POST /undaunted/api/HuntRegion [HasUndauntedUserApiKey]",
     "GET /undaunted/api/DiscordKeyStats [HasUndauntedAdminApiKey]",

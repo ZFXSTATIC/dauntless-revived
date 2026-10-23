@@ -262,7 +262,7 @@ describe("gateway over TLS", () => {
         assert.equal(Content.seen.length, ContentBefore);
     });
 
-    it("blocks every /undaunted/api route of the metagame except Register, GetUserInfo, ServerStatus and RegistrationStatus", async () => {
+    it("blocks every /undaunted/api route of the metagame except Register, GetUserInfo, ServerStatus, RegistrationStatus and Queue", async () => {
         const Routes = UndauntedApiRoutes();
         let Blocked = 0;
         for(const Route of Routes){

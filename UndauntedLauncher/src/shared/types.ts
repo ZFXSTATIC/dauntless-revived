@@ -164,6 +164,8 @@ export interface Snapshot {
   statusUnsupported: boolean; // the host answers but has no ServerStatus endpoint yet
   lastError: LauncherError | null;
   notice: NoticeCode | null;
+  // Waiting in the host's launch queue after PLAY (the host is locked for load), else null.
+  queue?: { position: number; length: number } | null;
 }
 
 export interface NewsItem {
@@ -225,6 +227,7 @@ export const IPC = {
   cancelTask: "dr:cancel-task",
   repair: "dr:repair",
   play: "dr:play",
+  leaveQueue: "dr:leave-queue",
   setSettings: "dr:set-settings",
   setStatusPolling: "dr:set-status-polling",
   refreshStatus: "dr:refresh-status",

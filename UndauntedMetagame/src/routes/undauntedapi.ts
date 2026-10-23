@@ -16,6 +16,7 @@ import { GrantEntitlementInTx, ListEntitlements, RevokeEntitlementInTx } from ".
 import { DoesAccountExist, RecordProgressionEvent } from "../controllers/progressionevents";
 import { GetDb } from "../db";
 import { CleanInviteNote, ErrorBody, GenerateInviteCode, IsUsernameTaken, IsValidUsername, LogInviteCreated, MAX_INVITE_USES, RegisterAccount, RenameAccount, TrimUsername } from "../controllers/accounts";
+import { GetLaunchQueue } from '../controllers/launchqueue';
 import { GetServerStatus } from "../controllers/serverstatus";
 import { logger } from "../logger";
 import { FindAccount } from "../controllers/login";
@@ -30,6 +31,14 @@ import { userapikeys, users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
 export const undauntedApiRouter = Router();
+
+// Launcher queue: POST to join and to keep your place (every few seconds), {"leave": true} to leave.
+undauntedApiRouter.post("/Queue", HasUndauntedUserApiKey, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const UserId = (req as any).UndauntedUserInfo.UserId;
+    if (req.body?.leave === true) { GetLaunchQueue().leave(UserId); res.json({state: 'open'}); return; }
+    res.json(await GetLaunchQueue().poll(UserId));
+});
 
 undauntedApiRouter.get('/HuntRegion', HasUndauntedUserApiKey, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');

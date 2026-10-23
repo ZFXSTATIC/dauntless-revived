@@ -4,6 +4,7 @@ import { DescribeGameservers, huntAdmission, Gameservers } from "../controllers/
 import { NativeOccupancy } from '../controllers/nativeoccupancy';
 import { DescribeOverflow } from '../controllers/overflow';
 import { DescribeAus } from '../controllers/regions';
+import { DescribeFleet } from '../controllers/fleet';
 
 export const gameserversRouter = Router();
 
@@ -33,13 +34,14 @@ gameserversRouter.get("/gameservers", async (req, res) => {
         return;
     }
 
-    const [overflow, aus, germany] = await Promise.all([DescribeOverflow(), DescribeAus(), DescribeAus('ger')]);
+    const [overflow, aus, germany, fleet] = await Promise.all([DescribeOverflow(), DescribeAus(), DescribeAus('ger'), DescribeFleet()]);
     res.status(200);
     res.json({
         servers: [...DescribeGameservers().map(server => {
             const process=Gameservers.find(s=>s.id===server.id);
             return {...server, connectedPlayers: process ? NativeOccupancy(process.processId,process.startTime) : undefined};
         }), ...overflow, ...aus, ...germany],
-        capacity: {...huntAdmission.status(), cpu:cpuAdmission.status()}
+        capacity: {...huntAdmission.status(), cpu:cpuAdmission.status()},
+        fleet
     });
 });
