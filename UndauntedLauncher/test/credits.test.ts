@@ -36,7 +36,7 @@ test("the credits name every contributor, in order, with their role", () => {
   const zfx = person(PROJECT_PEOPLE, "ZFXSTATIC");
   assert.equal(zfx.role, "contributor");
   assert.equal(PROJECT_PEOPLE[1].github, "ZFXSTATIC");
-  for (const part of ["client mods", "Mods page", "Lady Luck", "Middleman", "Trials", "Main, Germany and US"]) assert.ok(zfx.note.en.includes(part), `ZFXSTATIC en: ${part}`);
+  for (const part of ["client mods", "Mods page", "Lady Luck", "Middleman", "Trials", "Main, Germany and US", "every current server"]) assert.ok(zfx.note.en.includes(part), `ZFXSTATIC en: ${part}`);
 
   // Harmonic: the work ported from Harmonic's Dauntless 1.4.4 fork (Harmonicrain/Undaunted 895f7c7),
   // listed after Vvoidddd. The English note names no gender (nothing we have says which).
@@ -56,6 +56,10 @@ test("the credits name every contributor, in order, with their role", () => {
   for (const part of ["Escalationin kausiluettelo ja tallennussäännöt", "ilmainen kauppa", "Slayer Links", "kaatunut Ramsgate", "kavereiden paikalla olosta", "testitapaukset"]) {
     assert.ok(harmonic.note.fi.includes(part), `Harmonic fi: ${part}`);
   }
+
+  const ridjan = person(PROJECT_PEOPLE, "ridjan-xhika");
+  assert.equal(ridjan.role, "contributor");
+  for (const part of ["Trials", "Lady Luck", "Middleman", "hunt stability", "20-player Ramsgate pools"]) assert.ok(ridjan.note.en.includes(part), `ridjan en: ${part}`);
 
   assert.equal(UPSTREAM_PEOPLE[0].github, "SyST3MDeV", "Undaunted's creator comes first");
   const gwog = person(UPSTREAM_PEOPLE, "SyST3MDeV");
