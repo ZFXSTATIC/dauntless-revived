@@ -1544,7 +1544,7 @@ img {
 .mods-badge { color: var(--dr-glow); border: 1px solid var(--dr-azure); letter-spacing: 0.08em; font-size: 10px; }
 .mods-title { margin: 10px 0 8px; font-size: 26px; font-family: var(--font-display); line-height: 1.15; }
 .mods-intro { max-width: 860px; }
-.mods-grid { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.mods-grid { margin: 4px 0 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .mod-card {
   display: grid; gap: 8px; align-content: start; text-align: left; padding: 18px; border: 1px solid var(--dr-steel);
   border-radius: 12px; background: var(--dr-ink); color: var(--dr-frost);

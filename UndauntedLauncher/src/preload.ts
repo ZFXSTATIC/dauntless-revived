@@ -19,7 +19,7 @@ import type {
 
 const api = {
   // Set by DR_THEMES=1 in the main process: the unreleased themes are on.
-  themesPreview: process.argv.includes("--dr-themes"),
+  themesPreview: typeof process !== "undefined" && process.argv.includes("--dr-themes"),
   getSnapshot: (): Promise<Snapshot> => ipcRenderer.invoke(IPC.getSnapshot),
   checkInvite: (text: string): Promise<InviteCheck> => ipcRenderer.invoke(IPC.checkInvite, String(text)),
   // acceptNewCertificate: the user confirmed a public server's changed certificate.

@@ -1243,20 +1243,13 @@ function renderMods(): void {
   renderRegion($("#view-mods"), state.lang, () => [
     h("div", { class: "page mods-page" },
       h("h1", { class: "page-title", id: "mods-title" }, t("nav_mods")),
-      h("p", { class: "page-sub" }, t("mods_subtitle")),
-      card(
-        "mods-author",
-        h("span", { class: "badge mods-badge" }, t("mods_badge")),
-        h("h2", { class: "mods-title" }, t("mods_title")),
-        h("p", { class: "card-text mods-intro" }, t("mods_intro")),
-        h("div", { class: "mods-grid" },
-          ...MODS.map((m) =>
-            h("div", { class: "mod-card" },
-              h("span", { class: "mod-by" }, t("mods_by")),
-              h("strong", { class: "mod-name" }, icon(m.icon), t(m.name)),
-              h("span", { class: "mod-text" }, t(m.text)),
-              h("span", { class: "mod-use" }, t(m.use)),
-            ),
+      h("p", { class: "page-sub" }, t("mods_intro")),
+      h("div", { class: "mods-grid" },
+        ...MODS.map((m) =>
+          h("div", { class: "mod-card" },
+            h("strong", { class: "mod-name" }, icon(m.icon), t(m.name)),
+            h("span", { class: "mod-text" }, t(m.text)),
+            h("span", { class: "mod-use" }, t(m.use)),
           ),
         ),
       ),
