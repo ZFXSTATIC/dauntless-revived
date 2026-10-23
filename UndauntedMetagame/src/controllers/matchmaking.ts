@@ -317,6 +317,9 @@ async function LaunchGameOnDeployserver(GameMode: string, GameArgs: string, Hunt
 }
 
 async function LaunchGameOnDeployserverNow(GameMode: string, GameArgs: string, HuntId: string, AskedPlayers: string[] | undefined, Region: RegionChoice = 'main'): Promise<LaunchResult> {
+    // Test switch for trying the queue screen on a local server: every hunt answers "full"
+    if (process.env.QUEUE_TEST_FULL === '1' && GameMode === 'ISLAND') return {succeeded: false, readyNow: false, host: '', port: 0, capacity: true};
+
     const ExpectedPlayers = AskedPlayers === undefined ? undefined : DistinctPlayers(AskedPlayers);
 
     if(AskedPlayers !== undefined && ExpectedPlayers!.length !== AskedPlayers.length){
