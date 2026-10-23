@@ -35,15 +35,15 @@ export function boxInfo(port,json) {
     max:effectiveLimit(running,limit,cpu,Number(cap.cpu?.limit)),
     players,cpu:Number.isFinite(cpu)?cpu:null,blocked:!!cap.cpu?.blocked};
 }
-// The most players the hardware can take: the hunts each box can really run (its limit, or fewer when the CPU
-// guard would stop it first) with 4 players each, plus 20 for every Ramsgate city running (cities are capped at 2).
+// The players the servers can really carry: the hunts each box can run (its limit, or fewer when the CPU guard
+// would stop it first) times PLAYERS_PER_HUNT. A hunt seats 4, but a typical one holds 2-3, so 3 is used.
+export const PLAYERS_PER_HUNT=3;
 export function summarize(boxes) {
   let players=0,hunts=0,huntLimit=0,playersMax=0;
   for(const box of boxes) {
     const info=boxInfo(0,box);
-    const cities=(box.servers||[]).filter(s=>isLocal(s) && s.kind==='city').length;
     players+=info.players; hunts+=info.running; huntLimit+=info.limit;
-    playersMax+=info.max*4+cities*20;
+    playersMax+=info.max*PLAYERS_PER_HUNT;
   }
   return {Players:players,Hunts:hunts,HuntsMax:huntLimit,PlayersMax:playersMax};
 }

@@ -11,11 +11,11 @@ test('parsePorts falls back to the defaults', () => {
 test('summarize counts connected players and each server running hunts, with maximums', () => {
   const a={servers:[{kind:'city',connectedPlayers:6},{kind:'hunt',connectedPlayers:2},{kind:'hunt'}],capacity:{running:1,limit:10}};
   const b={servers:[{kind:'hunt',connectedPlayers:0}],capacity:{running:4,limit:5}};
-  assert.deepEqual(summarize([a,b]), {Players:8,Hunts:5,HuntsMax:15,PlayersMax:80});
+  assert.deepEqual(summarize([a,b]), {Players:8,Hunts:5,HuntsMax:15,PlayersMax:45});
 });
 test('fetchStats skips boxes that do not answer and returns null when none do', async () => {
   const ok=async url=>url.includes(':61041/') ? {ok:true,json:async()=>({servers:[{kind:'hunt',connectedPlayers:3}],capacity:{running:1,limit:2}})} : Promise.reject(new Error('down'));
-  assert.deepEqual(await fetchStats([61001,61041],ok), {Players:3,Hunts:1,HuntsMax:2,PlayersMax:8});
+  assert.deepEqual(await fetchStats([61001,61041],ok), {Players:3,Hunts:1,HuntsMax:2,PlayersMax:6});
   assert.equal(await fetchStats([61001],async()=>Promise.reject(new Error('down'))), null);
 });
 test('full means at the limit or held back by the CPU guard', () => {
@@ -51,10 +51,10 @@ test('the real hunt maximum is lowered when the CPU guard would stop the box fir
   assert.equal(effectiveLimit(0,16,5,80),16);
 });
 
-test('player maximum is the realistic hunts times 4 plus 20 per running city', () => {
+test('player maximum is the realistic hunts times 3', () => {
   const box=(servers,running,limit,cpu=null)=>({servers,capacity:{running,limit,cpu:cpu==null?undefined:{percent:cpu,limit:80}}});
-  assert.equal(summarize([box([],0,10)]).PlayersMax,40);
-  assert.equal(summarize([box([{kind:'city'},{kind:'city'}],0,10)]).PlayersMax,80);
-  assert.equal(summarize([box([],7,16,55)]).PlayersMax,40);
-  assert.equal(summarize([box([{kind:'city',host:'x'}],0,10)]).PlayersMax,40);
+  assert.equal(summarize([box([],0,10)]).PlayersMax,30);
+  assert.equal(summarize([box([{kind:'city'},{kind:'city'}],0,10)]).PlayersMax,30);
+  assert.equal(summarize([box([],7,16,55)]).PlayersMax,30);
+  assert.equal(summarize([box([],12,12,60),box([],30,30,60)]).PlayersMax,126);
 });
