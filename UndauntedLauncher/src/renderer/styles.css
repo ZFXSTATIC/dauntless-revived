@@ -3390,5 +3390,5 @@ img {
   height: 40%;
 }
 
-.mod-switch { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
-.mod-switch-note { color: var(--dr-steel); font-size: 12px; }
+.mod-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mods-switch-note { margin: -4px 0 14px; }

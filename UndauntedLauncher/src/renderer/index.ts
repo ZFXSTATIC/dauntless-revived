@@ -1254,7 +1254,7 @@ function modSwitch(m: { id: string; name: StringKey }, on: boolean, locked: bool
   onToggle(sw, (next) => {
     void api.setMod(m.id, next).then(() => loadMods());
   });
-  return h("div", { class: "mod-switch" }, sw, h("span", { class: "mod-switch-note" }, t("mods_switch_note")));
+  return sw;
 }
 
 function renderMods(): void {
@@ -1266,13 +1266,16 @@ function renderMods(): void {
       h("div", { class: "mods-grid" },
         ...MODS.map((m) =>
           h("div", { class: "mod-card" },
-            h("strong", { class: "mod-name" }, icon(m.icon), t(m.name)),
+            h("div", { class: "mod-head" },
+              h("strong", { class: "mod-name" }, icon(m.icon), t(m.name)),
+              modStates && m.id in modStates ? modSwitch(m, modStates[m.id], locked) : null,
+            ),
             h("span", { class: "mod-text" }, t(m.text)),
             h("span", { class: "mod-use" }, t(m.use)),
-            modStates && m.id in modStates ? modSwitch(m, modStates[m.id], locked) : null,
           ),
         ),
       ),
+      modStates ? h("p", { class: "small-print mods-switch-note" }, t("mods_switch_note")) : null,
       card("",
         h("h2", { class: "card-title" }, icon("info"), t("mods_notes_title")),
         h("p", { class: "card-text" }, t("mods_note_local")),
