@@ -11,11 +11,11 @@ test('parsePorts falls back to the defaults', () => {
 test('summarize counts connected players and each server running hunts, with maximums', () => {
   const a={servers:[{kind:'city',connectedPlayers:6},{kind:'hunt',connectedPlayers:2},{kind:'hunt'}],capacity:{running:1,limit:10}};
   const b={servers:[{kind:'hunt',connectedPlayers:0}],capacity:{running:4,limit:5}};
-  assert.deepEqual(summarize([a,b]), {Players:8,Hunts:5,HuntsMax:15});
+  assert.deepEqual(summarize([a,b]), {Players:8,Hunts:5,HuntsMax:15,PlayersMax:60});
 });
 test('fetchStats skips boxes that do not answer and returns null when none do', async () => {
   const ok=async url=>url.includes(':61041/') ? {ok:true,json:async()=>({servers:[{kind:'hunt',connectedPlayers:3}],capacity:{running:1,limit:2}})} : Promise.reject(new Error('down'));
-  assert.deepEqual(await fetchStats([61001,61041],ok), {Players:3,Hunts:1,HuntsMax:2});
+  assert.deepEqual(await fetchStats([61001,61041],ok), {Players:3,Hunts:1,HuntsMax:2,PlayersMax:8});
   assert.equal(await fetchStats([61001],async()=>Promise.reject(new Error('down'))), null);
 });
 test('full means at the limit or held back by the CPU guard', () => {

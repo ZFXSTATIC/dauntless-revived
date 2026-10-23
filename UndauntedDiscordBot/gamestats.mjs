@@ -41,7 +41,7 @@ export function summarize(boxes) {
     const info=boxInfo(0,box);
     players+=info.players; hunts+=info.running; huntMax+=info.max;
   }
-  return {Players:players,Hunts:hunts,HuntsMax:huntMax};
+  return {Players:players,Hunts:hunts,HuntsMax:huntMax,PlayersMax:huntMax*4};
 }
 export async function fetchBoxes(ports,fetchImpl=fetch) {
   const out=[];
@@ -167,7 +167,7 @@ export class GameStats {
     const channels=await guild.channels.fetch();
     cfg.stats ??= {};
     for(const key of Object.keys(LABELS)) {
-      const name=key==='Hunts' ? `Hunts : ${stats.Hunts}/${stats.HuntsMax}` : `Players : ${stats.Players}`;
+      const name=key==='Hunts' ? `Hunts : ${stats.Hunts}/${stats.HuntsMax}` : `Players : ${stats.Players}/${stats.PlayersMax}`;
       let channel=cfg.stats[key] ? channels.get(cfg.stats[key]) : undefined;
       if(!channel) channel=[...channels.values()].find(c=>c?.parentId===category.id && c.type===ChannelType.GuildVoice && c.name.startsWith(`${LABELS[key]} : `));
       if(!channel) channel=await guild.channels.create({name,type:ChannelType.GuildVoice,parent:category.id,permissionOverwrites:[
