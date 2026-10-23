@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, MessageFlags, REST } from 'discord.j
 import { resolve, dirname, join } from 'node:path';
 import {createCounters, syncCounterCommand} from './counter.mjs';
 import {acquireInstance} from './instance.mjs';
+import {GameStats, parsePorts} from './gamestats.mjs';
 import { backend, Keys, loadState, saveState } from './keys.mjs';
 import { loadInviteConfig, inviteMessage } from './invite.mjs';
 import { syncKeyCommands } from './commands.mjs';
@@ -35,6 +36,7 @@ client.once(Events.ClientReady, async () => {
     const changed = await syncKeyCommands(rest, client.application.id, guilds);
     await syncCounterCommand(rest,client.application.id);
     if(memberIntentEnabled) await counters.start();
+    new GameStats(client,counters,parsePorts(process.env.GAME_STATS_PORTS)).start();
     console.log(`Key command registration: ${changed} scopes updated`);
     console.log('Revived key bot ready');
   } catch { console.error('Could not register /key'); await client.destroy(); process.exitCode = 1; }
