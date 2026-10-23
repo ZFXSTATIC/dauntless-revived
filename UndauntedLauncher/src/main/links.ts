@@ -23,7 +23,7 @@ const EUGAMEHOST_GAME2_URL = "https://www.eugamehost.com/clients/cart.php?a=add&
 const EUGAMEHOST_GAME3_URL = "https://www.eugamehost.com/clients/cart.php?a=add&pid=240&promocode=SIGNUP6MONTH&skipconfig=1";
 const EUGAMEHOST_GAME5_URL = "https://www.eugamehost.com/clients/cart.php?a=add&pid=242&promocode=SIGNUP6MONTH&skipconfig=1";
 const EUGAMEHOST_5800X_URL = "https://www.eugamehost.com/clients/cart.php?a=add&pid=500";
-export const DISCORD_URL = "https://discord.gg/dauntlessrevived";
+const DISCORD_URL = "https://discord.gg/dauntlessrevived";
 const PATREON_URL = "https://www.patreon.com/cw/RamsgateReborn";
 
 export const FIXED_LINKS: Readonly<Record<FixedTarget, string>> = Object.freeze({

@@ -1597,10 +1597,6 @@ function renderSettings(): void {
       h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title", id: "streamer-label" }, t("set_streamer")), h("span", { class: "settings-row-sub" }, t("set_streamer_help"))), streamerSwitch),
     );
 
-    const presenceSwitch = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": snap.settings.discordPresence === false ? "false" : "true", "aria-labelledby": "presence-label", "data-fk": "presence" });
-    onToggle(presenceSwitch, (on) => void api.setSettings({ discordPresence: on }));
-    streaming.append(h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title", id: "presence-label" }, t("set_presence")), h("span", { class: "settings-row-sub" }, t("set_presence_help"))), presenceSwitch));
-
     const about = card(
       "settings-section",
       h("h2", { class: "card-title" }, t("set_about")),
