@@ -187,7 +187,7 @@ export class GameStats {
     this.registerStatus().catch(e=>console.error(`Could not register /status: ${e.message}`));
     this.client.on(Events.InteractionCreate,async interaction=>{
       if(!interaction.isChatInputCommand() || interaction.commandName!=='status') return;
-      try {await interaction.reply({embeds:[statusEmbed(await this.infos(),await fetchLoggedIn())]});}
+      try {await interaction.deferReply(); const [infos,loggedIn]=await Promise.all([this.infos(),fetchLoggedIn()]); await interaction.editReply({embeds:[statusEmbed(infos,loggedIn)]});}
       catch(e) {console.error(`/status failed: ${e.message}`);}
     });
     setInterval(()=>this.poll().catch(e=>console.error(`Alert poll failed: ${e.message}`)),60000).unref();
