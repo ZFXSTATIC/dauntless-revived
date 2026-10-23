@@ -1,5 +1,5 @@
 // The public-mode relay (contract C4) against a local HTTPS "gateway" with a throwaway
-// self-signed certificate. Ports: 62401 upstream, 62402-62404 relays, 62409 nothing listening.
+// self-signed certificate. Ports: 42401 upstream, 42402-42404 relays, 42409 nothing listening.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -14,11 +14,11 @@ import { filterHeaders, Relay, RelayError } from "../src/main/relay";
 import { createRelayOwnerCheck } from "../src/main/relay-owner";
 import { makeTestCert, type TestCert } from "./certs";
 
-const UPSTREAM_PORT = 62401;
-const RELAY_PORT = 62402;
-const WRONG_PIN_RELAY_PORT = 62403;
-const DOWN_RELAY_PORT = 62404;
-const NOTHING_PORT = 62409;
+const UPSTREAM_PORT = 42401;
+const RELAY_PORT = 42402;
+const WRONG_PIN_RELAY_PORT = 42403;
+const DOWN_RELAY_PORT = 42404;
+const NOTHING_PORT = 42409;
 
 interface Seen {
   method: string;

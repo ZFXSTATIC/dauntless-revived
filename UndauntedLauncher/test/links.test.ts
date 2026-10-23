@@ -1,7 +1,7 @@
 // Links the launcher opens in the browser. The page only names a link; the main process opens exactly
 // that link's fixed URL. Raw URLs, unknown names, look-alike hosts and other repositories never get
 // through, neither at the IPC check nor at the URL allow-list.
-// Port: 62445 a private-mode (plain HTTP, loopback) metagame that announces its own source link.
+// Port: 42445 a private-mode (plain HTTP, loopback) metagame that announces its own source link.
 
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +17,7 @@ import { parseServerStatus } from "../src/shared/status";
 import type { ExternalTarget } from "../src/shared/types";
 import { FakeMetagame } from "./fakes";
 
-const HOST_PORT = 62445;
+const HOST_PORT = 42445;
 const HOST_SOURCE = "https://git.example.org/friday/server";
 const SHARE = "https://login.tailscale.com/admin/invite/links-test";
 

@@ -6,8 +6,8 @@ import https from "node:https";
 import { createHash } from "node:crypto";
 import type { AddressInfo } from "node:net";
 
-export const CONTENT_PORT = 62012;
-export const METAGAME_PORT = 62013;
+export const CONTENT_PORT = 42012;
+export const METAGAME_PORT = 42013;
 
 export interface TlsOptions {
   cert: string;

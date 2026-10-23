@@ -1,8 +1,8 @@
 // The whole public-mode flow through the Controller, against a fake TLS gateway that serves the
 // metagame routes and /content/*: invite v2 -> pinned ServerStatus -> Register -> install ->
 // Play (relay + Engine.ini + launch args) -> game exit stops the relay.
-// Ports: 62440 fake gateway (TLS), 62441 relay, 62442 relay for the busy-port case, 62443 a
-// gateway whose certificate changes, 62444 a private-mode (plain HTTP, loopback) metagame.
+// Ports: 42440 fake gateway (TLS), 42441 relay, 42442 relay for the busy-port case, 42443 a
+// gateway whose certificate changes, 42444 a private-mode (plain HTTP, loopback) metagame.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -27,12 +27,12 @@ import type { OfflineStatus, Snapshot } from "../src/shared/types";
 import { FakeContentServer, FakeMetagame, makeFiles, manifestFor, sha256, TEST_BUILD } from "./fakes";
 import { makeTestCert, type TestCert } from "./certs";
 
-const GATEWAY_PORT = 62440;
-const RELAY_PORT = 62441;
-const BUSY_RELAY_PORT = 62442;
-const SWAP_PORT = 62443;
-const PRIVATE_PORT = 62444;
-const OFFLINE_PORT = 62445;
+const GATEWAY_PORT = 42440;
+const RELAY_PORT = 42441;
+const BUSY_RELAY_PORT = 42442;
+const SWAP_PORT = 42443;
+const PRIVATE_PORT = 42444;
+const OFFLINE_PORT = 42445;
 const ASSETS = path.resolve(__dirname, "..", "..", "assets");
 const EXE = "Archon/Binaries/Win64/Fake-Game.exe";
 

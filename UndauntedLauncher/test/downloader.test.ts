@@ -1,4 +1,4 @@
-// Download / verify / resume against a local fake content server on 127.0.0.1:62012.
+// Download / verify / resume against a local fake content server on 127.0.0.1:42012.
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

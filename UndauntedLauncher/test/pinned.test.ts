@@ -1,6 +1,6 @@
 // Public mode without the relay: ServerStatus, Register, GetUserInfo, the content probe and the
 // downloads all go straight to the gateway over TLS pinned to the invite's fingerprint.
-// Ports: 62420 fake metagame (TLS), 62421 fake content server (TLS), 62422 an older metagame
+// Ports: 42420 fake metagame (TLS), 42421 fake content server (TLS), 42422 an older metagame
 // (plain HTTP on loopback).
 
 import { test, before, after } from "node:test";
@@ -17,9 +17,9 @@ import { validateManifest, type GameManifest } from "../src/main/manifest";
 import { FakeContentServer, FakeMetagame, makeFiles, manifestFor, TEST_BUILD } from "./fakes";
 import { makeTestCert, type TestCert } from "./certs";
 
-const META_PORT = 62420;
-const CONTENT_TLS_PORT = 62421;
-const LEGACY_PORT = 62422;
+const META_PORT = 42420;
+const CONTENT_TLS_PORT = 42421;
+const LEGACY_PORT = 42422;
 const KEY = "UUK_" + "e".repeat(48);
 
 let cert: TestCert;
@@ -79,7 +79,7 @@ test("ServerStatus: ok over the pin, cert_mismatch with another fingerprint", as
   if (ok.kind === "ok") assert.equal(ok.status.name, "Test Server");
   const bad = await fetchServerStatus({ ...metaEp(), pin: other.fingerprint });
   assert.equal(bad.kind, "cert_mismatch");
-  const down = await fetchServerStatus({ host: "127.0.0.1", port: 62429, pin: cert.fingerprint }, { timeoutMs: 2000 });
+  const down = await fetchServerStatus({ host: "127.0.0.1", port: 42429, pin: cert.fingerprint }, { timeoutMs: 2000 });
   assert.equal(down.kind, "unreachable");
 });
 
