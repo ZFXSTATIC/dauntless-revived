@@ -78,12 +78,12 @@ export const isFull=b=>b.up && b.limit>0 && (b.running>=b.limit || b.blocked);
 export function statusEmbed(infos,loggedIn=null) {
   const full=infos.filter(isFull).length, down=infos.filter(b=>!b.up).length;
   const color=down||full===infos.length ? 0xe5484d : full ? 0xf2a33a : 0x4cc38a;
-  const line=b=>!b.up ? '🔴 not answering' : `${isFull(b)?'🟠':'🟢'} ${b.running}/${b.limit} hunts, ${b.players} in game`;
+  const line=b=>!b.up ? '🔴 not answering' : `${isFull(b)?'🟠':'🟢'} ${b.running}/${b.limit} hunts, ${b.players} in game${isFull(b)?(b.running>=b.limit?' (hunt limit)':` (CPU ${Math.round(b.cpu)}%)`):''}`;
   const tot=infos.filter(b=>b.up).reduce((t,b)=>({r:t.r+b.running,l:t.l+b.limit,p:t.p+b.players}),{r:0,l:0,p:0});
   return new EmbedBuilder().setTitle('Dauntless Revived server status').setColor(color)
     .addFields(infos.map(b=>({name:b.name,value:line(b),inline:true})))
     .addFields({name:'Total',value:`${tot.r}/${tot.l} hunts, ${loggedIn==null?tot.p+' players online':loggedIn+' online ('+tot.p+' in a game)'}`})
-    .setFooter({text:'🟢 room available   🟠 busy, new hunts may wait   🔴 down'}).setTimestamp();
+    .setFooter({text:'🟢 room available   🟠 full or CPU-limited, new hunts may wait   🔴 down'}).setTimestamp();
 }
 export const STATUS_COMMAND=new SlashCommandBuilder().setName('status').setDescription('Show how busy the Dauntless Revived servers are').toJSON();
 
