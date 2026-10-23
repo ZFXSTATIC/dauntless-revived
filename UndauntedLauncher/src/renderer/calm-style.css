@@ -753,6 +753,14 @@
   box-shadow: none;
 }
 
+/* ---- Classic with the blue behemoth art behind the page (only when themes are on: data-theme is not set otherwise) */
+:root[data-theme="classic"] .scene {
+  display: none;
+}
+:root[data-theme="classic"] .hero {
+  background: var(--dr-ink) url("./brand/theme-classic.webp") 75% 45% / cover no-repeat;
+}
+
 /* The theme picker's previews: each theme's own colours, whichever theme is on. */
 .swatch-classic { background: #0c2b48; }
 .swatch-classic i:first-child { background: #1d4f78; }

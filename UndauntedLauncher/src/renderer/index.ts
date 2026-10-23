@@ -47,7 +47,7 @@ function storedTheme(): Theme | null {
   }
 }
 let theme: Theme = THEMES_ENABLED ? storedTheme() ?? "classic" : "classic";
-document.documentElement.dataset.theme = theme;
+if (THEMES_ENABLED) document.documentElement.dataset.theme = theme;
 function setTheme(next: Theme): void {
   if (!THEMES_ENABLED) return;
   theme = next;
