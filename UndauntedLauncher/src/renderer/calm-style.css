@@ -887,6 +887,59 @@
   text-shadow: 0 1px 3px rgb(0 0 0 / 0.75), 0 0 1px rgb(0 0 0 / 0.6);
 }
 
+/* ---- thicker, easier to see borders on every box and bar */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) {
+  --edge-c: color-mix(in srgb, var(--calm-accent) 55%, transparent);
+}
+:root[data-theme="classic"] {
+  --edge-c: color-mix(in srgb, var(--dl-silver-hi) 90%, transparent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) :is(.card, .account-chip, .partner-mini, .settings-panel, .instance, .mod-card, .badge) {
+  border: 2px solid var(--edge-c);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel > .card {
+  border: 0;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar {
+  border-bottom: 2px solid var(--edge-c);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .actionbar {
+  border-top: 2px solid var(--edge-c);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-panel {
+  border-left: 2px solid var(--edge-c);
+}
+:root[data-theme="jade"] .rail {
+  border-left: 2px solid var(--edge-c);
+}
+:root[data-theme="dusk"] .rail {
+  border-right: 2px solid var(--edge-c);
+}
+:root[data-theme="horizon"] .rail {
+  border-bottom: 2px solid var(--edge-c);
+}
+:root[data-theme="classic"] :is(.card, .account-chip, .partner-mini, .partner-banner, .settings-panel, .instance) {
+  border: 3px solid var(--edge-c);
+}
+:root[data-theme="classic"] .mod-card {
+  border: 3px solid var(--edge-c);
+}
+:root[data-theme="classic"] .settings-panel > .card {
+  border: 0;
+}
+:root[data-theme="classic"] .titlebar {
+  border-bottom: 3px solid var(--edge-c);
+}
+:root[data-theme="classic"] .actionbar {
+  border-top: 3px solid var(--edge-c);
+}
+:root[data-theme="classic"] .rail {
+  border-right: 3px solid var(--edge-c);
+}
+:root[data-theme="classic"] .server-panel {
+  border-left: 3px solid var(--edge-c);
+}
+
 /* The theme picker's previews: each theme's own colours, whichever theme is on. */
 .swatch-classic { background: #0c2b48; }
 .swatch-classic i:first-child { background: #1d4f78; }
