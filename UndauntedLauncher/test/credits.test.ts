@@ -58,7 +58,7 @@ test("the credits name every contributor, in order, with their role", () => {
 
   const ridjan = person(PROJECT_PEOPLE, "ridjan-xhika");
   assert.equal(ridjan.role, "contributor");
-  for (const part of ["Trials", "Lady Luck", "Middleman", "hunt stability", "20-player Ramsgate pools"]) assert.ok(ridjan.note.en.includes(part), `ridjan en: ${part}`);
+  for (const part of ["Hunt stability", "20-player Ramsgate pools"]) assert.ok(ridjan.note.en.includes(part), `ridjan en: ${part}`);
 
   assert.equal(UPSTREAM_PEOPLE[0].github, "SyST3MDeV", "Undaunted's creator comes first");
   const gwog = person(UPSTREAM_PEOPLE, "SyST3MDeV");
