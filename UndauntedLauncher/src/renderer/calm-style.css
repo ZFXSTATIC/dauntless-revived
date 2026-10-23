@@ -366,7 +366,7 @@
   display: none;
 }
 :root[data-theme="jade"] .hero {
-  background: var(--calm-bg) url("./brand/theme-jade.webp") center / cover no-repeat;
+  background: var(--calm-bg) url("./brand/theme-jade.webp") 75% 45% / cover no-repeat;
 }
 :root[data-theme="jade"] .hero-shade {
   background: linear-gradient(90deg, color-mix(in srgb, var(--calm-bg) 52%, transparent) 0%, color-mix(in srgb, var(--calm-bg) 16%, transparent) 50%, transparent 100%);
