@@ -4,7 +4,7 @@ import { GetRamsgateConnectionDetails, GetTrainingDojoConnectionDetails, Startup
 import { Gameservers, KindOfGameserver, huntAdmission, DescribeGameservers, CityPoolEnabled } from './gameservers';
 import { HuntRouter, RemoteLaunch, OverflowUrl, DescribeOverflow } from './overflow';
 import { CityRouter } from './cityrouter';
-import { NativeOccupancy } from './nativeoccupancy';
+import { NativeReportedOccupancy } from './nativeoccupancy';
 import { RegionalRouter, RegionChoice } from './regions';
 
 const Regions = new RegionalRouter(async () => {
@@ -35,7 +35,7 @@ const Cities = new CityRouter(async () => {
         return city ? Number(city.connectedPlayers ?? status.instances.find((i:any) => i.id === city.id)?.players ?? 0) : 0;
     };
     const city=Gameservers.find(s=>s.isRamsgate);
-    return {local: (city ? NativeOccupancy(city.processId,city.startTime) : undefined) ?? count(DescribeGameservers()), remote: count(worker)};
+    return {local: (city ? NativeReportedOccupancy(city.processId,city.startTime) : undefined) ?? count(DescribeGameservers()), remote: count(worker)};
 });
 
 const Router = new HuntRouter(() => Gameservers.filter(server => ['hunt', 'tutorial'].includes(KindOfGameserver(server))).length, undefined, () => huntAdmission.status());
