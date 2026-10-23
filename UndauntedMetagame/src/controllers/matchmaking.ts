@@ -34,6 +34,40 @@ const QUEUE_FULL_PLAYERS = 4;
 // A live player's polls renew this lease; disconnected waiters expire.
 export const CAPACITY_WAIT_MS = 60 * 1000;
 const CapacityOrder = new CapacityTurns(CAPACITY_WAIT_MS);
+// Polling renews the lease above, so a player in a full-server queue would wait for ever. This is a
+// hard limit counted from the first join; QUEUE_MAX_WAIT_MS=0 turns it off.
+const QUEUE_MAX_WAIT_MS = Number(process.env.QUEUE_MAX_WAIT_MS ?? 15 * 60 * 1000);
+// When a hunt starts for a waiting player the next one is about this far behind (average of recent starts)
+const QUEUE_DEFAULT_STEP_MS = 30 * 1000;
+const RecentStarts: number[] = [];
+
+function NoteStart() {
+    RecentStarts.push(PartyNow());
+    if (RecentStarts.length > 10) RecentStarts.shift();
+}
+
+function AverageStepMs() {
+    if (RecentStarts.length < 3) return QUEUE_DEFAULT_STEP_MS;
+    return Math.max(5000, (RecentStarts[RecentStarts.length - 1] - RecentStarts[0]) / (RecentStarts.length - 1));
+}
+
+export type QueueStatus = { position: number, size: number, etaMs: number };
+
+// Place in the full-server queue (1 is next), counted among players of the same region who are waiting
+// for capacity, oldest join first.
+export function QueueStatusFor(PlayerId: string): QueueStatus | undefined {
+    const mine = MatchmakingResultMap.get(PlayerId);
+    if (!mine || mine.Ready || mine.Failed || !CapacityWaits.has(mine.CandidateId)) return undefined;
+    const myAt = mine.QueuedAt ?? PartyNow();
+    let ahead = 0, size = 0;
+    for (const [id, other] of MatchmakingResultMap) {
+        if (other.Ready || other.Failed || other.Region !== mine.Region || !CapacityWaits.has(other.CandidateId)) continue;
+        size++;
+        const at = other.QueuedAt ?? PartyNow();
+        if (id !== PlayerId && (at < myAt || (at === myAt && other.CandidateId < mine.CandidateId))) ahead++;
+    }
+    return { position: ahead + 1, size, etaMs: Math.round((ahead + 1) * AverageStepMs()) };
+}
 // The deploy server answers "capacity" whenever two launches are already waiting to spawn, so a
 // retry usually fits a few seconds later; ten seconds between tries left most of the minute unused
 const CAPACITY_RETRY_MS = 3 * 1000;
@@ -483,6 +517,8 @@ export async function CheckAndUpdateQueueStatus(PlayerId: string){
     if (waiting) {
         if (PartyNow() >= waiting.deadline) {
             FailCandidate(PlayerMatchmakingResult.CandidateId, 'capacity wait expired');
+        } else if (QUEUE_MAX_WAIT_MS > 0 && PartyNow() - (PlayerMatchmakingResult.QueuedAt ?? PartyNow()) >= QUEUE_MAX_WAIT_MS) {
+            FailCandidate(PlayerMatchmakingResult.CandidateId, 'queue wait limit reached');
         } else {
             waiting.deadline = PartyNow() + CAPACITY_WAIT_MS;
             if (PlayerMatchmakingResult.PartyCandidate) {
@@ -768,6 +804,7 @@ export async function DecideCandidateStatus(PlayerId: string): Promise<Candidate
         logger.info(`mm: ${PlayerId} still asking ${REJOIN_PARK_MS / 1000} s after joining candidate ${Entry.CandidateId} again: sending them to ${Entry.Host}:${Entry.Port} again`);
     }
 
+    if (Entry.FirstSentAt === undefined) NoteStart();
     Entry.FirstSentAt ??= PartyNow();
     MatchmakingRoster.served(PlayerId, Entry.CandidateId);
     LastSentMap.set(PlayerId, { Host: Entry.Host, Port: Entry.Port, HuntId: Entry.HuntId, SessionId: Entry.SessionId, At: PartyNow() });

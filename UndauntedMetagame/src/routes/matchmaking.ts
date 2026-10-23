@@ -2,7 +2,7 @@ import { Router } from "express";
 import { HasUndauntedMetagameAuth } from "../middleware/HasUndauntedMetagameAuth";
 import { logger } from "../logger";
 import { GameSessionForCandidate } from "../controllers/matchmaking";
-import { CancelMatchmaking, CheckAndUpdateQueueStatus, DecideCandidateStatus, HandlePlayerMatchmaking, JoinPartyCandidateById, LeaveCandidate, MatchmakingResult } from "../controllers/matchmaking";
+import { QueueStatusFor, CancelMatchmaking, CheckAndUpdateQueueStatus, DecideCandidateStatus, HandlePlayerMatchmaking, JoinPartyCandidateById, LeaveCandidate, MatchmakingResult } from "../controllers/matchmaking";
 import { MatchmakingRoster } from "../controllers/matchmakingroster";
 
 export const matchmakingRouter = Router();
@@ -132,6 +132,20 @@ function PlayerStatesOf(MatchmakingResult: MatchmakingResult): Record<string, {}
     return { UserId: {} };
 }
 
+// Only while the player waits for a free server: where they stand and how long it should take.
+function QueueFields(UserId: string){
+    const Queue = QueueStatusFor(UserId);
+    if(Queue === undefined){
+        return {};
+    }
+
+    const Minutes = Math.max(1, Math.ceil(Queue.etaMs / 60000));
+    return {
+        message: `You are #${Queue.position} in queue (${Queue.size} waiting), ETA ${Minutes}m`,
+        idealRemainingMillis: Queue.etaMs
+    };
+}
+
 matchmakingRouter.get("/candidate/status", HasUndauntedMetagameAuth, async (req: any, res) => {
     const UserId = req.AuthData.userId;
 
@@ -190,7 +204,8 @@ matchmakingRouter.get("/candidate/status", HasUndauntedMetagameAuth, async (req:
                 playerStates: PlayerStatesOf(MatchmakingResult),
                 status : "MATCHING",
                 statusDuration : 0.0,
-                statusReason : null
+                statusReason : null,
+                ...QueueFields(UserId)
             })
         }
     }
