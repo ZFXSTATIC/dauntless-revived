@@ -6,31 +6,31 @@
 
 
 /* ---- frame */
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar {
   background: var(--calm-bg);
   box-shadow: none;
   border-bottom: 1px solid var(--calm-line);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar::before,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar::after {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar::before,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar::after {
   display: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .rail {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .rail {
   background: var(--calm-bg);
   box-shadow: none;
   border-right: 1px solid var(--calm-line);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .actionbar {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .actionbar {
   background: color-mix(in srgb, var(--calm-bg) 92%, transparent);
   box-shadow: none;
   border-top: 1px solid var(--calm-line);
 }
 
 /* ---- navigation: soft rows, the current page marked by a tinted pill and an accent bar */
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .nav {
   gap: 2px;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item {
   margin-left: 0;
   width: 100%;
   height: 40px;
@@ -41,11 +41,11 @@
   color: var(--calm-muted);
   font-weight: 600;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item:hover {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item:hover {
   background: rgb(255 255 255 / 0.05);
   color: #fff;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item[aria-current="page"] {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item[aria-current="page"] {
   margin-left: 0;
   width: 100%;
   padding-left: 12px;
@@ -54,54 +54,54 @@
   color: #fff;
   filter: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item .icon,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item[aria-current="page"] .icon {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item .icon,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item[aria-current="page"] .icon {
   width: 20px;
   height: 20px;
   filter: none;
   color: var(--calm-muted);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item[aria-current="page"] .icon {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item[aria-current="page"] .icon {
   color: var(--calm-accent);
 }
 
 /* ---- surfaces */
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .card,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .account-chip,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .partner-mini,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel > .card,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .instance {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .card,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .account-chip,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .partner-mini,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel > .card,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance {
   border: 1px solid var(--calm-line);
   border-radius: var(--calm-radius);
   background: var(--calm-surface);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .partner-mini:hover:not(:disabled),
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .account-switch:hover:not(:disabled) {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .partner-mini:hover:not(:disabled),
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .account-switch:hover:not(:disabled) {
   background: var(--calm-raised);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .badge {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .badge {
   border: 0;
   border-radius: 999px;
   background: rgb(255 255 255 / 0.07);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .server-panel {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-panel {
   background: color-mix(in srgb, var(--calm-bg) 82%, transparent);
   border-left: 1px solid var(--calm-line);
   box-shadow: none;
 }
 
 /* ---- buttons */
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .btn {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn {
   border: 1px solid var(--calm-line);
   border-radius: 9px;
   background: var(--calm-raised);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .btn:hover:not(:disabled) {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--calm-raised) 70%, var(--calm-accent));
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .btn-primary {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn-primary {
   border-color: transparent;
   background: var(--calm-accent);
   color: var(--calm-on-accent);
@@ -109,7 +109,7 @@
 }
 
 /* ---- PLAY: one flat gold pill instead of the angled bevelled plate */
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button {
   clip-path: none;
   border-radius: 14px;
   background: linear-gradient(180deg, var(--calm-play-hi), var(--calm-play-lo));
@@ -119,84 +119,92 @@
   filter: none;
   box-shadow: 0 6px 20px color-mix(in srgb, var(--calm-play-lo) 30%, transparent);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button::before {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button::before {
   display: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button:hover:not(:disabled) {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button:hover:not(:disabled) {
   background: var(--calm-play-hi);
   filter: none;
   box-shadow: 0 8px 26px color-mix(in srgb, var(--calm-play-hi) 40%, transparent);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button:active:not(:disabled) {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button:active:not(:disabled) {
   background: var(--calm-play-lo);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button:disabled {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button:disabled {
   background: var(--calm-raised);
   color: var(--calm-muted);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-running,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-running:disabled,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-pause {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-running,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-running:disabled,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-pause {
   background: var(--calm-raised);
   color: #fff;
 }
 
 /* ---- steps and settings tabs */
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .step-dot {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .step-dot {
   border: 1px solid var(--calm-line);
   background: var(--calm-raised);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .step.current .step-dot {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .step.current .step-dot {
   background: var(--calm-accent);
   border-color: transparent;
   color: var(--calm-on-accent);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .step.done .step-dot {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .step.done .step-dot {
   border-color: transparent;
   color: var(--calm-accent);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tabs {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tabs {
   border-radius: 10px;
   border: 1px solid var(--calm-line);
   background: var(--calm-surface);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab[aria-selected="true"] {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab[aria-selected="true"] {
   border-radius: 8px;
   background: var(--calm-raised);
   box-shadow: inset 0 -2px 0 var(--calm-accent);
 }
 
 /* ---- dialogs and menus */
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .modal,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-list,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .server-menu,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-list,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-menu,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu {
   border: 1px solid var(--calm-line);
   border-radius: var(--calm-radius);
   background: var(--calm-surface);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .modal::before,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .modal::after {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal::before,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal::after {
   display: none;
 }
 
 /* ---- the three flat themes' colours */
-:root[data-theme="calm"] {
-  --calm-bg: #08121d;
-  --calm-surface: #0e1f31;
-  --calm-raised: #14304a;
-  --calm-line: rgb(255 255 255 / 0.08);
-  --calm-accent: #5cc8e8;
-  --calm-on-accent: #04202b;
-  --calm-muted: #a9b9c8;
-  --calm-play-hi: #f6cf62;
-  --calm-play-lo: #e3a92c;
-  --calm-play-ink: #2e1e03;
-  --calm-radius: 12px;
+:root[data-theme="jade"] {
+  --calm-bg: #07130e;
+  --calm-surface: #0d2018;
+  --calm-raised: #153427;
+  --calm-line: rgb(220 255 240 / 0.1);
+  --calm-accent: #34d98a;
+  --calm-on-accent: #03180e;
+  --calm-muted: #a4c4b4;
+  --calm-play-hi: #5ff0a6;
+  --calm-play-lo: #1fb86b;
+  --calm-play-ink: #03180e;
+  --calm-radius: 4px;
+  --dr-ink: #040c08;
+  --dr-navy: #07130e;
+  --dr-deep: #153427;
+  --dr-azure: #1a8f5a;
+  --dr-ice: #34d98a;
+  --dr-glow: #8cf5c2;
+  --dr-steel: #a4c4b4;
+  --dr-frost: #effbf5;
 }
 
 :root[data-theme="horizon"] {
@@ -331,6 +339,39 @@
   gap: 6px;
 }
 
+/* ---- Jade: the rail on the right, square corners, green art behind the page */
+:root[data-theme="jade"] .shell {
+  grid-template-columns: minmax(0, 1fr) var(--rail-w);
+}
+:root[data-theme="jade"] .rail {
+  order: 2;
+  border-right: 0;
+  border-left: 1px solid var(--calm-line);
+}
+:root[data-theme="jade"] .world {
+  order: 1;
+}
+:root[data-theme="jade"] .nav-item,
+:root[data-theme="jade"] .nav-item[aria-current="page"] {
+  border-radius: 2px;
+}
+:root[data-theme="jade"] .nav-item[aria-current="page"] {
+  box-shadow: inset -3px 0 0 var(--calm-accent);
+}
+:root[data-theme="jade"] .big-button {
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+:root[data-theme="jade"] .scene {
+  display: none;
+}
+:root[data-theme="jade"] .hero {
+  background: var(--calm-bg) url("./brand/theme-jade.webp") center / cover no-repeat;
+}
+:root[data-theme="jade"] .hero-shade {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--calm-bg) 90%, transparent) 0%, color-mix(in srgb, var(--calm-bg) 66%, transparent) 50%, color-mix(in srgb, var(--calm-bg) 34%, transparent) 100%);
+}
+
 /* ---- Dusk: a slim icon rail, rounded everything, violet */
 :root[data-theme="dusk"] .rail {
   align-items: center;
@@ -424,12 +465,122 @@
   background: linear-gradient(90deg, color-mix(in srgb, var(--calm-bg) 92%, transparent) 0%, color-mix(in srgb, var(--calm-bg) 70%, transparent) 45%, color-mix(in srgb, var(--calm-bg) 40%, transparent) 100%);
 }
 
+/* ---- every blue of the Classic look, recoloured: the --dl-* tokens it is built from */
+:root[data-theme="jade"] {
+  --dl-bar-top: #1d6b47;
+  --dl-bar-bottom: #0e3d28;
+  --dl-bar-edge: #3fa874;
+  --dl-sel-top: #2a9663;
+  --dl-sel-bottom: #17603f;
+  --dl-sel-edge: #7fd9ac;
+  --dl-silver-hi: #9bc4b0;
+  --dl-silver-mid: #3f6b58;
+  --dl-silver-lo: #1d3a2d;
+  --dl-panel: #0b2218;
+  --dl-cyan: #6ff0b4;
+}
+:root[data-theme="horizon"] {
+  --dl-bar-top: #8a4218;
+  --dl-bar-bottom: #4a2210;
+  --dl-bar-edge: #c8743a;
+  --dl-sel-top: #d9671f;
+  --dl-sel-bottom: #8f3f12;
+  --dl-sel-edge: #ffb070;
+  --dl-silver-hi: #c9a98e;
+  --dl-silver-mid: #6e5240;
+  --dl-silver-lo: #3a2b20;
+  --dl-panel: #1a120d;
+  --dl-cyan: #ffb070;
+}
+:root[data-theme="dusk"] {
+  --dl-bar-top: #5b3aa0;
+  --dl-bar-bottom: #2d1b54;
+  --dl-bar-edge: #8f6ad6;
+  --dl-sel-top: #7f4fe0;
+  --dl-sel-bottom: #46289a;
+  --dl-sel-edge: #d4bcff;
+  --dl-silver-hi: #b8a6dc;
+  --dl-silver-mid: #5a4880;
+  --dl-silver-lo: #2a2045;
+  --dl-panel: #150e26;
+  --dl-cyan: #cdb4ff;
+}
+
+/* ---- the small things that were hard-coded blue */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance-icon,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .player-avatar {
+  border: 1px solid var(--calm-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--calm-accent) 22%, var(--calm-surface));
+  color: var(--calm-accent);
+  box-shadow: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance-bar {
+  border-radius: 999px;
+  background: var(--calm-bg);
+  box-shadow: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance-bar > span,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .k-hunt .instance-bar > span {
+  border-radius: 999px;
+  background: var(--calm-accent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance-title {
+  text-shadow: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .player:hover {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--calm-accent) 12%, transparent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .bar-fill {
+  background: var(--calm-accent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .step-line.done {
+  background: var(--calm-accent);
+}
+
+/* ---- the logo and emblem: the project's own art, painted in the theme's accent colour */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar-emblem {
+  object-fit: none;
+  object-position: -9999px 0;
+  background: var(--calm-accent);
+  -webkit-mask: url("./brand/theme-emblem.png") center / contain no-repeat;
+  mask: url("./brand/theme-emblem.png") center / contain no-repeat;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .tile-logo {
+  object-fit: none;
+  object-position: -9999px 0;
+  width: 92px;
+  height: 92px;
+  background: var(--calm-accent);
+  -webkit-mask: url("./brand/theme-emblem.png") center / contain no-repeat;
+  mask: url("./brand/theme-emblem.png") center / contain no-repeat;
+}
+:root[data-theme="jade"] .game-tile::after {
+  content: "DAUNTLESS REVIVED";
+  font: 600 12px/1 var(--font-display);
+  letter-spacing: 0.22em;
+  color: var(--dr-frost);
+}
+:root[data-theme="horizon"] .game-tile .tile-logo {
+  width: 44px;
+  height: 40px;
+  -webkit-mask: url("./brand/theme-emblem.png") center / contain no-repeat;
+  mask: url("./brand/theme-emblem.png") center / contain no-repeat;
+}
+:root[data-theme="dusk"] .game-tile .tile-logo {
+  width: 52px;
+  height: 52px;
+  -webkit-mask: url("./brand/theme-emblem.png") center / contain no-repeat;
+  mask: url("./brand/theme-emblem.png") center / contain no-repeat;
+}
+
 /* ---- settings: flat tabs and rows instead of the game's blue tab buttons and steel frame */
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tabs {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tabs {
   gap: 4px;
   padding: 4px;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab {
   height: 36px;
   border: 0;
   border-image: none;
@@ -439,62 +590,62 @@
   text-shadow: none;
   filter: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab:hover {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab:hover {
   background: rgb(255 255 255 / 0.05);
   color: var(--dr-frost);
   filter: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab[aria-selected="true"] {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab[aria-selected="true"] {
   background: var(--calm-raised);
   color: var(--dr-frost);
   filter: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab:focus-visible {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab:focus-visible {
   outline: 2px solid var(--calm-accent);
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel {
   border: 1px solid var(--calm-line);
   border-radius: var(--calm-radius);
   background: var(--calm-surface);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .card-title,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .card-title-text {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .card-title,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .card-title-text {
   color: var(--calm-muted);
   text-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .settings-row {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .settings-row {
   border: 1px solid var(--calm-line);
   border-radius: 10px;
   background: transparent;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .settings-row:hover,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .settings-row:focus-within {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .settings-row:hover,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .settings-row:focus-within {
   border-color: var(--calm-accent);
   background: color-mix(in srgb, var(--calm-accent) 8%, transparent);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .info-tip::after {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .info-tip::after {
   border-radius: 8px;
   border-color: var(--calm-line);
   background: var(--calm-raised);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .input,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .textarea,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .select {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .input,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .textarea,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .select {
   border-radius: 9px;
   border: 1px solid var(--calm-line);
   background: var(--calm-bg);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .input:focus,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .textarea:focus,
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .select:focus {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .input:focus,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .textarea:focus,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .select:focus {
   border-color: var(--calm-accent);
   box-shadow: none;
 }
-:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .switch[aria-checked="true"] {
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .switch[aria-checked="true"] {
   background: var(--calm-accent);
   border-color: transparent;
 }
@@ -503,9 +654,9 @@
 .swatch-classic { background: #0c2b48; }
 .swatch-classic i:first-child { background: #1d4f78; }
 .swatch-classic i:last-child { background: #e2b440; }
-.swatch-calm { background: #08121d; }
-.swatch-calm i:first-child { background: #0e1f31; }
-.swatch-calm i:last-child { background: #5cc8e8; }
+.swatch-jade { background: #07130e; }
+.swatch-jade i:first-child { background: #153427; }
+.swatch-jade i:last-child { background: #34d98a; }
 .swatch-horizon { background: #14110f; }
 .swatch-horizon i:first-child { background: #2a211a; }
 .swatch-horizon i:last-child { background: #ff8a3d; }
