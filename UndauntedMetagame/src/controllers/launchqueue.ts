@@ -1,7 +1,7 @@
-// Launcher queue. While the whole fleet is locked for load, a launcher asks here before it
+// Launcher queue. While the hunt fleet is locked (see LaunchGate below), a launcher asks here before it
 // starts the game; players get in first come, first served as hunt slots free up.
 // In memory only: a metagame restart empties it and the launchers join again on their next poll.
-// An unreadable fleet never blocks anyone.
+// An unreadable fleet never blocks anyone. The live wiring is in launchqueuelive.ts.
 
 export type FleetState = { locked: boolean, free: number | null };
 export type QueueReply =
@@ -56,25 +56,26 @@ export class LaunchQueue {
     length() { return this.waiting.size; }
 }
 
-let Instance: LaunchQueue | undefined;
-let FleetCache: { at: number, state: FleetState | undefined } | undefined;
+// What the deploy server reports for the whole fleet (UndauntedDeployServer/src/controllers/fleet.ts).
+export type FleetReport = { locked: boolean, free: number | null };
 
-// The deploy server's GET /gameservers "fleet" (UndauntedDeployServer/src/controllers/fleet.ts)
-async function FetchFleet(): Promise<FleetState | undefined> {
-    if (FleetCache && Date.now() - FleetCache.at < 3000) return FleetCache.state;
-    let state: FleetState | undefined;
-    const DeployServer = process.env.DEPLOYSERVER_URL;
-    if (DeployServer) {
-        try {
-            const Reply = await fetch(`http://${DeployServer}/gameservers`, { signal: AbortSignal.timeout(2000) });
-            const fleet = Reply.status === 200 ? (await Reply.json() as any)?.fleet : undefined;
-            if (typeof fleet?.locked === "boolean") state = { locked: fleet.locked, free: Number.isFinite(fleet.free) ? fleet.free : null };
-        } catch {}
+export type GateSettings = { reserveMin: number, playersPerHunt: number, refusalMs: number };
+
+// Keeps spare hunt slots for players already online, so their next hunt never waits on room.
+// New launchers are held back once the spare runs out, and at once for a while after any
+// "no room" answer. The lock lifts only with one slot more than the spare, and no refusal
+// in the last window, so it does not flap.
+export class LaunchGate {
+    private locked = false;
+    constructor(private settings: GateSettings) {}
+    update(fleet: FleetReport | undefined, playersOutsideHunts: number, lastRefusal: number, now: number): FleetState | undefined {
+        if (!fleet) return undefined;
+        const {reserveMin, playersPerHunt, refusalMs} = this.settings;
+        const reserve = Math.max(reserveMin, Math.ceil(playersOutsideHunts / playersPerHunt));
+        const spare = fleet.free === null ? null : fleet.free - reserve;
+        const refused = lastRefusal > 0 && now - lastRefusal < refusalMs;
+        if (fleet.locked || refused || (spare !== null && spare < 0)) this.locked = true;
+        else if (spare === null || spare >= 1) this.locked = false;
+        return {locked: this.locked, free: spare === null ? null : Math.max(0, spare)};
     }
-    FleetCache = { at: Date.now(), state };
-    return state;
-}
-
-export function GetLaunchQueue() {
-    return Instance ??= new LaunchQueue(() => process.env.LAUNCH_QUEUE === "0" ? Promise.resolve(undefined) : FetchFleet());
 }

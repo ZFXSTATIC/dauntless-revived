@@ -13,32 +13,6 @@ import { isPrivateModeHost } from "../shared/invite";
 
 const KEY_HEADER = "x-undaunted-user-api-key";
 
-// ---------------------------------------------------------------- Queue
-// While the host is locked for load it queues new launches. Anything but a "queued" answer lets
-// the game start: an older host without the queue, or one that cannot read its fleet, never blocks.
-
-export type QueueResult = { kind: "go" } | { kind: "queued"; position: number; length: number };
-
-export async function pollQueue(ep: Endpoint, key: string): Promise<QueueResult> {
-  let res: HttpResponse;
-  try {
-    res = await request(ep, "/undaunted/api/Queue", { method: "POST", headers: statusHeaders(ep, key), body: "{}", timeoutMs: 10000, maxBytes: 4096 });
-  } catch {
-    return { kind: "go" };
-  }
-  const body = parseJsonBody(res);
-  if (res.status !== 200 || !isObject(body) || body.state !== "queued") return { kind: "go" };
-  const position = typeof body.position === "number" && Number.isSafeInteger(body.position) && body.position >= 1 ? body.position : 1;
-  const length = typeof body.length === "number" && Number.isSafeInteger(body.length) && body.length >= position ? body.length : position;
-  return { kind: "queued", position, length };
-}
-
-export async function leaveQueue(ep: Endpoint, key: string): Promise<void> {
-  try {
-    await request(ep, "/undaunted/api/Queue", { method: "POST", headers: statusHeaders(ep, key), body: JSON.stringify({ leave: true }), timeoutMs: 5000, maxBytes: 4096 });
-  } catch {}
-}
-
 export async function saveHuntRegion(ep: Endpoint, key: string, region: 'main' | 'aus' | 'ger'): Promise<boolean> {
   const res = await request(ep, '/undaunted/api/HuntRegion', {
     method:'POST', headers:statusHeaders(ep,key), body:JSON.stringify({region}), timeoutMs:10000,maxBytes:4096

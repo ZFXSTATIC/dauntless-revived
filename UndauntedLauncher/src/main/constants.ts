@@ -41,8 +41,5 @@ export const XMPP_PORT = 61099;
 
 export const CONNECT_TIMEOUT_MS = 5000;
 export const STATUS_POLL_MS = 15000;
-// How often a launcher waiting in the host's launch queue asks again (the host drops a place
-// that is not asked about for 20 s).
-export const QUEUE_POLL_MS = 5000;
 export const DISK_MARGIN_BYTES = 1024 * 1024 * 1024; // 1 GiB on top of what is still to download
 export const DOWNLOAD_CONCURRENCY = 4;

@@ -71,11 +71,25 @@ summed limit, or when every reachable host is CPU blocked, and unlocks only at o
 readable at all the fleet stays locked. Hosts without a numeric hunt limit leave `limit` null,
 so only the CPU rule can lock the fleet.
 
-While the fleet is locked, the launcher asks the metagame's `POST /undaunted/api/Queue` after
-PLAY and waits there instead of starting the game. It shows the player's place and a LEAVE QUEUE
+The metagame decides when new launchers wait. The goal is that players already online never
+wait on room for their next hunt. It keeps spare hunt slots for them: at least
+`LAUNCH_RESERVE_HUNTS` (default 2), or one per `LAUNCH_PLAYERS_PER_HUNT` (default 2) online
+players who are not in a hunt, whichever is more. It holds new launchers back when:
+
+- the free slots drop below that spare,
+- the deploy server refused any hunt for lack of room in the last `LAUNCH_REFUSAL_LOCK_SECONDS`
+  (default 60), or
+- the deploy server's fleet lock above is on.
+
+It lets them in again once there is one slot more than the spare and no recent refusal. The
+spare cannot fully cover many online players starting hunts at the same moment, or slow
+hunt startups, but it makes a wait on room rare.
+
+While new launchers are held back, the launcher asks the metagame's `POST /undaunted/api/Queue`
+after PLAY and waits there instead of starting the game. It shows the player's place and a LEAVE QUEUE
 button, and asks again every 5 seconds. Places go in arrival order. A place that is not asked
-about for 20 seconds is dropped. Once the fleet unlocks, the front of the line gets a 3-minute
-ticket, one per free slot not already held by a ticket, and the game starts by itself.
+about for 20 seconds is dropped. Once it opens, the front of the line gets a 3-minute
+ticket, one per slot above the spare not already held by a ticket, and the game starts by itself.
 If there is no line and the fleet is open, PLAY starts the game at once.
 
 Limits: the queue is in metagame memory, so a restart empties it and waiting launchers join
@@ -83,3 +97,8 @@ again at the back. It gates only the launcher's PLAY. Players already in the gam
 clients started without the launcher, are not held back; the deploy server's own capacity
 refusals still apply to them. An unreadable deploy server, an older host without the route,
 or `LAUNCH_QUEUE=0` on the metagame means nobody is queued.
+
+The launcher side is one module, `UndauntedLauncher/src/main/launch-queue.ts`, so any launcher
+look can use it: call `LaunchQueueClient.wait()` between the account check and the game start,
+draw its `place`, and wire a button to `leave()`. `LAUNCH_QUEUE_ENABLED` in that file, or
+`{enabled: false}`, turns it off.

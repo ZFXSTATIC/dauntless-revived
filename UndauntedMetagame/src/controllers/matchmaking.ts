@@ -1,5 +1,6 @@
 import { PlayerRegion, RegionQueueKey, HuntRegion, RegionChoice } from './huntregion';
 import { logger } from "../logger";
+import { NoteCapacityRefusal } from "./capacitysignal";
 import crypto from "node:crypto";
 import {
     ClearPartyCandidate, GetPartyOf, LAST_CANDIDATE_REJOIN_MS, MarkPartyCandidateReady, MarkPartyCandidateServed, Party, PartyCandidate,
@@ -143,6 +144,7 @@ async function LaunchGameOnDeployserver(GameMode: string, GameArgs: string, Hunt
         try {
             const body = await MatchmakingResult.json();
             if (body?.error === 'capacity_unavailable' && ['memory', 'ports', 'hunts', 'cpu'].includes(body.reason)) {
+                NoteCapacityRefusal();
                 logger.warn({reason: body.reason, huntId: HuntId, capacityWaitMs: CAPACITY_WAIT_MS}, 'mm: allocation waiting for capacity');
                 return {...Failed, capacity: true};
             }

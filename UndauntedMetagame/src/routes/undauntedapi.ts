@@ -16,7 +16,7 @@ import { GrantEntitlementInTx, ListEntitlements, RevokeEntitlementInTx } from ".
 import { DoesAccountExist, RecordProgressionEvent } from "../controllers/progressionevents";
 import { GetDb } from "../db";
 import { CleanInviteNote, ErrorBody, GenerateInviteCode, IsUsernameTaken, IsValidUsername, LogInviteCreated, MAX_INVITE_USES, RegisterAccount, RenameAccount, TrimUsername } from "../controllers/accounts";
-import { GetLaunchQueue } from '../controllers/launchqueue';
+import { GetLaunchQueue } from '../controllers/launchqueuelive';
 import { GetServerStatus } from "../controllers/serverstatus";
 import { logger } from "../logger";
 import { FindAccount } from "../controllers/login";

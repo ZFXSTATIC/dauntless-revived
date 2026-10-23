@@ -16,7 +16,8 @@ import { missingDirectX, gameExitDetail } from './windows-runtime';
 import { parseInvite, isLoopbackHost, type Invite } from "../shared/invite";
 import { checkUsername, extractAccountKey } from "../shared/username";
 import { limitedView, type ServerStatus } from "../shared/status";
-import { saveHuntRegion, pollQueue, leaveQueue } from './hostapi';
+import { saveHuntRegion } from './hostapi';
+import { LaunchQueueClient } from "./launch-queue";
 import type {
   ActionResult,
   Branding,
@@ -70,7 +71,6 @@ import {
   PINNED_EXE_SHA256,
   PROJECT_URL,
   STATUS_POLL_MS,
-  QUEUE_POLL_MS,
   XMPP_PORT,
 } from "./constants";
 
@@ -90,7 +90,8 @@ export interface Platform {
   // Public mode: where the local relay listens. The game server tells every client to use
   // 127.0.0.1:61000, so only tests and rehearsals change it.
   relayPort?: number;
-  // How often the launch queue is asked again (tests make it short).
+  // The host's launch queue (src/main/launch-queue.ts): off with false; tests make it ask fast.
+  launchQueue?: boolean;
   queuePollMs?: number;
   // The file checked by hash before every launch (tests use a fake game).
   exePin?: { relativePath: string; sha256: string };
@@ -142,8 +143,7 @@ export class Controller {
   // Bumped when a ServerStatus answer already on its way may no longer be shown: logout, a new key,
   // a forgotten or different server. See fetchStatus().
   private statusGen = 0;
-  private queue: { position: number; length: number } | null = null;
-  private queueAbort: AbortController | null = null;
+  private readonly launchQueue: LaunchQueueClient;
   private busy = false;
   private install: InstallInfo = { present: 0, missing: [], partFiles: 0, dllsOk: false };
   private freeSpace: number | null = null;
@@ -164,6 +164,12 @@ export class Controller {
   private phase: Phase = "loading";
 
   constructor(private readonly p: Platform) {
+    this.launchQueue = new LaunchQueueClient({
+      enabled: p.launchQueue,
+      pollMs: p.queuePollMs,
+      onChange: () => this.publish(),
+      log: (message) => log.info(message),
+    });
     this.settings = new SettingsStore(p.userDataDir, p.defaultLanguage, p.hostPlatform ?? process.platform);
     this.keys = new KeyStore(path.join(p.userDataDir, "keys"), p.encryptor);
     this.game = new GameProcess(p.spawn);
@@ -297,7 +303,7 @@ export class Controller {
       statusUnsupported: this.statusUnsupported,
       lastError: this.lastError,
       notice: this.notice,
-      queue: this.queue,
+      queue: this.launchQueue.place,
     };
   }
 
@@ -1104,7 +1110,7 @@ export class Controller {
           if (!await saveHuntRegion(ep,key,this.s.huntRegion)) return this.fail('server_error','The selected hunt region is unavailable. Choose Main in Settings or try again later.');
         } catch { return this.fail('server_unreachable'); }
       }
-      if (!(await this.waitInQueue(ep, key))) return err("cancelled");
+      if (!(await this.launchQueue.wait(ep, key))) return err("cancelled");
       const dir = this.installDir;
       await this.inspectInstall();
       if (this.install.missing.length > 0) return this.fail("game_files_invalid", String(this.install.missing.length));
@@ -1187,38 +1193,9 @@ export class Controller {
     });
   }
 
-  // Asks the host before the game starts and waits in its queue while it is locked for load.
-  // false when the player left the queue.
-  private async waitInQueue(ep: Endpoint, key: string): Promise<boolean> {
-    const abort = new AbortController();
-    this.queueAbort = abort;
-    try {
-      for (;;) {
-        const answer = await pollQueue(ep, key);
-        if (abort.signal.aborted) break;
-        if (answer.kind === "go") return true;
-        if (this.queue?.position !== answer.position || this.queue?.length !== answer.length) {
-          if (!this.queue) log.info("host is busy: waiting in its launch queue");
-          this.queue = { position: answer.position, length: answer.length };
-          this.publish();
-        }
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, this.p.queuePollMs ?? QUEUE_POLL_MS);
-          abort.signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
-        });
-        if (abort.signal.aborted) break;
-      }
-      log.info("left the launch queue");
-      await leaveQueue(ep, key);
-      return false;
-    } finally {
-      this.queueAbort = null;
-      this.queue = null;
-    }
-  }
-
+  // The launch queue's LEAVE QUEUE button.
   leaveQueue(): void {
-    this.queueAbort?.abort();
+    this.launchQueue.leave();
   }
 
   private async startRelay(sv: StoredServer): Promise<ActionResult> {
