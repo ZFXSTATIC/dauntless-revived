@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { accessSync, constants as fsConstants } from "node:fs";
+import { accessSync, constants as fsConstants, unlinkSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -18,14 +18,18 @@ function findNft(env) {
   for (const candidate of ["/usr/sbin/nft", "/sbin/nft"]) if (executable(candidate)) return candidate;
   return null;
 }
+// nft -f - fails with "Not a regular file: /dev/stdin" when stdin is a socket (which is what a Node pipe is
+// on Linux), so the rules go through a short-lived file.
 function runNft(nft, script) {
   return new Promise((resolve, reject) => {
-    const child = spawn(nft, ["-f", "-"], { stdio: ["pipe", "ignore", "pipe"] });
+    const file = "/run/dr-nft-" + process.pid + "-" + Date.now() + ".nft";
+    try { writeFileSync(file, script, { mode: 0o600 }); } catch (error) { reject(error); return; }
+    const child = spawn(nft, ["-f", file], { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
     child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-    child.once("error", reject);
-    child.once("exit", (code) => code === 0 ? resolve() : reject(new Error("nft failed: " + stderr.trim())));
-    child.stdin.end(script);
+    const done = (fn, value) => { try { unlinkSync(file); } catch {} fn(value); };
+    child.once("error", (error) => done(reject, error));
+    child.once("exit", (code) => code === 0 ? done(resolve) : done(reject, new Error("nft failed: " + stderr.trim())));
   });
 }
 let preparedKey = null;

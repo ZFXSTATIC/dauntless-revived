@@ -13,7 +13,8 @@ usage: $0 --game-dir <Dauntless folder> [options]
   --proton-data <dir>           default /var/lib/dauntless-revived-worker/proton
   --wine <path>                 explicit wine/wine64 path
   --wineprefix <dir>            default /var/lib/dauntless-revived-worker/wineprefix
-  --xvfb 0|1                    default 1
+  --xvfb 0|1|shared             default 1; shared runs one Xvfb service (:99) for all games,
+                                use it whenever several games can start at once
   --no-system-changes           do not create users or write /etc (test mode)
 EOF
   exit 2
@@ -51,7 +52,9 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ -n "$game_dir" ] || usage
-case "$xvfb" in 0|1) ;; *) usage ;; esac
+case "$xvfb" in 0|1|shared) ;; *) usage ;; esac
+xvfb_value=$xvfb; display_line=
+if [ "$xvfb" = shared ]; then xvfb_value=0; display_line="DISPLAY=:99"; fi
 
 for c in node sha256sum; do command -v "$c" >/dev/null 2>&1 || { echo "missing command: $c" >&2; exit 1; }; done
 node -e "const [a,b]=process.versions.node.split(\".\").map(Number); if(a<20 || (a===20 && b<19)) process.exit(1)" || { echo "Node.js 20.19+ is required" >&2; exit 1; }
@@ -62,6 +65,10 @@ else
   if [ -z "$wine" ]; then wine=$(command -v wine64 2>/dev/null || command -v wine 2>/dev/null || true); fi
   [ -n "$wine" ] || { echo "Proton or Wine is required (use --proton/--wine, or install wine64/wine)." >&2; exit 1; }
   [ -x "$wine" ] || { echo "Wine is not executable: $wine" >&2; exit 1; }
+fi
+if [ "$xvfb" = shared ] && ! command -v Xvfb >/dev/null 2>&1; then
+  echo "Xvfb is required for --xvfb shared; install Xvfb." >&2
+  exit 1
 fi
 if [ "$xvfb" = 1 ] && ! command -v xvfb-run >/dev/null 2>&1; then
   echo "xvfb-run is required for a headless worker; install Xvfb or use --xvfb 0 with a real DISPLAY." >&2
@@ -95,8 +102,9 @@ DR_PROTON_BINARY=$proton
 DR_PROTON_COMPAT_DATA=$proton_data
 DR_WINE_BINARY=$wine
 DR_WINEPREFIX=$wineprefix
-DR_XVFB=$xvfb
-WINEDEBUG=-all
+DR_XVFB=$xvfb_value
+${display_line:+$display_line
+}WINEDEBUG=-all
 WINEDLLOVERRIDES=dxgi=n,b
 EOF
 mv "$env_file.tmp" "$env_file"
@@ -105,6 +113,13 @@ if [ "$no_system" -eq 0 ]; then
   chown root:"$(id -gn "$worker_user")" "$env_file"; chmod 640 "$env_file"
   mkdir -p "$(dirname "$command_link")"
   ln -sf "$install_root/deploy/linux-server/ssh-worker-command.sh" "$command_link"
+fi
+
+if [ "$xvfb" = shared ] && [ "$no_system" -eq 0 ] && command -v systemctl >/dev/null 2>&1; then
+  sed "s#@USER@#$worker_user#g" "$install_root/deploy/linux-server/systemd/dauntless-xvfb.service" > /etc/systemd/system/dauntless-xvfb.service
+  systemctl daemon-reload
+  systemctl enable --now dauntless-xvfb
+  echo "Shared display: dauntless-xvfb.service (:99). Make the deploy service wait for it: Requires=/After=dauntless-xvfb.service."
 fi
 
 echo "Linux game worker configured."

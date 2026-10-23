@@ -1,27 +1,71 @@
+import { readFileSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { CapacityUnavailable } from './capacity';
 import { RemoteLaunch, ReadWorkerSnapshot, GameserverSnapshot } from './overflow';
 
 export type RegionChoice = 'main' | 'aus' | 'ger' | 'us' | 'mixed';
 type Request = Parameters<typeof RemoteLaunch>[1];
 type Load = {running:number,pending:number,limit:number|null};
-export function AusUrl(region: 'aus' | 'ger' | 'us' = 'aus') {
+type WorkerRegion = 'aus' | 'ger' | 'us';
+type WorkerEntry = {urls: string[], hosts: string[]};
+// workers.json: {"us": {"urls": ["http://127.0.0.1:61041", "http://127.0.0.1:61042"], "hosts": ["1.2.3.4", "5.6.7.8"]}, "ger": {...}}
+// It is looked at on every call (stat first, parsed only when it changed), so a worker is added by editing
+// this file and the deploy server does not restart. Missing or unreadable: the last good copy, then the
+// *_DEPLOYSERVER_URL and *_PUBLIC_HOST settings below. Only us and ger may list several workers.
+let WorkersCache: {mtimeMs: number, data: any} = {mtimeMs: -1, data: undefined};
+function WorkersFile() {
+    return process.env.WORKERS_FILE || resolve(process.cwd(), '..', '..', 'data', 'config', 'workers.json');
+}
+function FileWorkers(region: WorkerRegion): WorkerEntry | undefined {
+    try {
+        const file = WorkersFile();
+        const mtimeMs = statSync(file).mtimeMs;
+        if (mtimeMs !== WorkersCache.mtimeMs) {
+            const parsed = JSON.parse(readFileSync(file, 'utf8'));
+            WorkersCache = {mtimeMs, data: parsed && typeof parsed === 'object' ? parsed : undefined};
+        }
+    } catch {
+        // keep the last good copy
+    }
+    const entry = WorkersCache.data?.[region];
+    if (!entry || !Array.isArray(entry.urls) || !entry.urls.length) return undefined;
+    return {urls: entry.urls.map(String), hosts: Array.isArray(entry.hosts) ? entry.hosts.map(String) : []};
+}
+export function WorkerHosts(region: WorkerRegion): string[] {
+    const file = region === 'aus' ? undefined : FileWorkers(region);
+    if (file && file.hosts.length) return file.hosts;
+    const setting = region === 'us' ? 'US_PUBLIC_HOST' : region === 'ger' ? 'GERMANY_PUBLIC_HOST' : 'AUS_PUBLIC_HOST';
+    return (process.env[setting] ?? '').split(',').map(host => host.trim()).filter(Boolean);
+}
+export function AusUrls(region: WorkerRegion = 'aus'): URL[] {
     // Retired permanently, including when an old environment file is restored.
-    if (region === 'aus') return undefined;
-    const setting = region === 'us' ? 'US_DEPLOYSERVER_URL' : region === 'ger' ? 'GERMANY_DEPLOYSERVER_URL' : 'AUS_DEPLOYSERVER_URL';
-    if (!process.env[setting]) return undefined;
-    const url = new URL(process.env[setting]!);
-    if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password || url.pathname !== '/' || url.search || url.hash)
-        throw new Error(`${setting} must be an HTTP loopback tunnel`);
-    return url;
+    if (region === 'aus') return [];
+    const setting = region === 'us' ? 'US_DEPLOYSERVER_URL' : 'GERMANY_DEPLOYSERVER_URL';
+    const fromFile = FileWorkers(region);
+    const raw = fromFile ? fromFile.urls.join(',') : process.env[setting];
+    if (!raw) return [];
+    return raw.split(',').map(item => item.trim()).filter(Boolean).map(item => {
+        const url = new URL(item);
+        if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password || url.pathname !== '/' || url.search || url.hash)
+            throw new Error(`${setting} must be an HTTP loopback tunnel`);
+        return url;
+    });
+}
+export function AusUrl(region: WorkerRegion = 'aus') {
+    return AusUrls(region)[0];
 }
 export function Utilization(load: Load) {
     return load.limit && load.limit > 0 ? (load.running + load.pending) / load.limit : Infinity;
 }
-export async function DescribeAusSnapshot(region: 'aus' | 'ger' | 'us' = 'aus'): Promise<GameserverSnapshot> {
-    const url = AusUrl(region);
-    if (!url) return {servers: [], complete: true};
-    const snapshot = await ReadWorkerSnapshot(url);
-    return {...snapshot, servers: snapshot.servers.map(server => ({...server, host: region, region}))};
+export async function DescribeAusSnapshot(region: WorkerRegion = 'aus'): Promise<GameserverSnapshot> {
+    const urls = AusUrls(region);
+    if (!urls.length) return {servers: [], complete: true};
+    const parts = await Promise.all(urls.map(url => ReadWorkerSnapshot(url)));
+    return {
+        ...parts[0],
+        complete: parts.every(part => part.complete !== false),
+        servers: parts.flatMap(part => part.servers.map(server => ({...server, host: region, region})))
+    };
 }
 export async function DescribeAus(region: 'aus' | 'ger' | 'us' = 'aus'): Promise<any[]> {
     return (await DescribeAusSnapshot(region)).servers;
@@ -37,14 +81,18 @@ export class RegionalRouter {
         }) {}
     async launch<T>(body: Request, choice: RegionChoice, main: () => Promise<T>): Promise<T | NonNullable<Awaited<ReturnType<typeof RemoteLaunch>>>> {
         if (choice === 'ger' || choice === 'us') {
-            const germany = AusUrl(choice);
-            if (!germany) throw new CapacityUnavailable('hunts');
-            const connection = await this.remote(germany, body);
-            if (!connection) throw new CapacityUnavailable('hunts');
-            const expectedHost = process.env[choice === 'us' ? 'US_PUBLIC_HOST' : 'GERMANY_PUBLIC_HOST'];
-            if (expectedHost && connection.host !== expectedHost)
-                throw new Error('Regional worker returned a destination outside the selected region');
-            return connection;
+            const workers = AusUrls(choice);
+            if (!workers.length) throw new CapacityUnavailable('hunts');
+            const hosts = WorkerHosts(choice);
+            // An ambiguous failure (timeout, reset) throws out of remote() and is never retried on another worker.
+            for (const worker of workers) {
+                const connection = await this.remote(worker, body);
+                if (!connection) continue;
+                if (hosts.length && !hosts.includes(connection.host))
+                    throw new Error('Regional worker returned a destination outside the selected region');
+                return connection;
+            }
+            throw new CapacityUnavailable('hunts');
         }
         const primary = main;
         main = async () => {
