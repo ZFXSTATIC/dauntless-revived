@@ -86,7 +86,7 @@
   background: rgb(255 255 255 / 0.07);
 }
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-panel {
-  background: color-mix(in srgb, var(--calm-bg) 82%, transparent);
+  background: color-mix(in srgb, var(--calm-bg) 55%, transparent);
   border-left: 1px solid var(--calm-line);
   box-shadow: none;
 }
@@ -369,7 +369,7 @@
   background: var(--calm-bg) url("./brand/theme-jade.webp") center / cover no-repeat;
 }
 :root[data-theme="jade"] .hero-shade {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--calm-bg) 76%, transparent) 0%, color-mix(in srgb, var(--calm-bg) 38%, transparent) 50%, color-mix(in srgb, var(--calm-bg) 10%, transparent) 100%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--calm-bg) 52%, transparent) 0%, color-mix(in srgb, var(--calm-bg) 16%, transparent) 50%, transparent 100%);
 }
 
 /* ---- Dusk: a slim icon rail, rounded everything, violet */
@@ -462,7 +462,7 @@
   background: var(--calm-bg) url("./brand/theme-dusk.webp") 75% 45% / cover no-repeat;
 }
 :root:is([data-theme="horizon"], [data-theme="dusk"]) .hero-shade {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--calm-bg) 78%, transparent) 0%, color-mix(in srgb, var(--calm-bg) 40%, transparent) 45%, color-mix(in srgb, var(--calm-bg) 10%, transparent) 100%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--calm-bg) 52%, transparent) 0%, color-mix(in srgb, var(--calm-bg) 16%, transparent) 45%, transparent 100%);
 }
 
 /* ---- every blue of the Classic look, recoloured: the --dl-* tokens it is built from */
@@ -768,7 +768,7 @@
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel,
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel > .card,
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance {
-  background: color-mix(in srgb, var(--calm-surface) 52%, transparent);
+  background: color-mix(in srgb, var(--calm-surface) 30%, transparent);
 }
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel > .card {
   background: none;
@@ -776,29 +776,29 @@
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .card,
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel,
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-panel {
-  -webkit-backdrop-filter: blur(5px);
-  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
 }
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-panel {
-  background: color-mix(in srgb, var(--calm-bg) 50%, transparent);
+  background: color-mix(in srgb, var(--calm-bg) 28%, transparent);
 }
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .actionbar {
-  background: color-mix(in srgb, var(--calm-bg) 66%, transparent);
+  background: color-mix(in srgb, var(--calm-bg) 42%, transparent);
 }
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .rail {
-  background: color-mix(in srgb, var(--calm-bg) 82%, transparent);
+  background: color-mix(in srgb, var(--calm-bg) 55%, transparent);
 }
 :root[data-theme="classic"] {
-  --dl-panel: color-mix(in srgb, #071f36 52%, transparent);
+  --dl-panel: color-mix(in srgb, #071f36 32%, transparent);
 }
 :root[data-theme="classic"] .card,
 :root[data-theme="classic"] .settings-panel,
 :root[data-theme="classic"] .server-panel {
-  -webkit-backdrop-filter: blur(5px);
-  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
 }
 :root[data-theme="classic"] .hero-shade {
-  opacity: 0.55;
+  opacity: 0.35;
 }
 
 /* The theme picker's previews: each theme's own colours, whichever theme is on. */
