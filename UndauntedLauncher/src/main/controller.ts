@@ -938,19 +938,30 @@ export class Controller {
     let present = 0;
     let partFiles = 0;
     const missing: ManifestFile[] = [];
-    for (const f of manifest.files) {
-      const full = resolveInside(dir, f.path);
-      try {
-        const st = await fsp.stat(full);
-        if (st.isFile() && st.size === f.size) {
-          present++;
-          continue;
+    // Thousands of files: look at them a batch at a time instead of one after another, which is what
+    // makes the first screen wait on a big install. The result is the same, in manifest order.
+    const BATCH = 64;
+    for (let i = 0; i < manifest.files.length; i += BATCH) {
+      const batch = manifest.files.slice(i, i + BATCH);
+      const found = await Promise.all(
+        batch.map(async (f) => {
+          const full = resolveInside(dir, f.path);
+          try {
+            const st = await fsp.stat(full);
+            if (st.isFile() && st.size === f.size) return { f, ok: true, part: false };
+          } catch {
+            /* missing */
+          }
+          return { f, ok: false, part: existsSync(full + ".part") };
+        }),
+      );
+      for (const r of found) {
+        if (r.ok) present++;
+        else {
+          missing.push(r.f);
+          if (r.part) partFiles++;
         }
-      } catch {
-        /* missing */
       }
-      missing.push(f);
-      if (existsSync(full + ".part")) partFiles++;
     }
     const dlls = present > 0 ? await dllStatus(dir) : [];
     this.install = { present, missing, partFiles, dllsOk: dlls.length > 0 && dlls.every((d) => d.ok) };
