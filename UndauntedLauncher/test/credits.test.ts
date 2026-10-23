@@ -20,7 +20,7 @@ function person(list: readonly CreditPerson[], github: string): CreditPerson {
 }
 
 test("the credits name every contributor, in order, with their role", () => {
-  assert.equal(PROJECT_PEOPLE[0].github, "mixutin", "the maintainer comes first");
+  assert.deepEqual(PROJECT_PEOPLE.slice(0, 3).map((p) => p.github), ["ZFXSTATIC", "ridjan-xhika", "mixutin"], "ZFXSTATIC and ridjan xhika head the list");
   assert.equal(person(PROJECT_PEOPLE, "mixutin").role, "maintainer");
   assert.equal(person(PROJECT_PEOPLE, "mixutin").name, "mixutin");
   assert.match(person(PROJECT_PEOPLE, "LupesHk").note.en, /Brazilian Portuguese/);
@@ -32,10 +32,9 @@ test("the credits name every contributor, in order, with their role", () => {
   assert.ok(voidNote.note.en.length < 400, "the note stays short");
   for (const part of ["opt-in Basic exposure setting", "console windows", "performance sampler", "existing Dauntless 1.4.4 folder", "text chat server (XMPP)"]) assert.ok(voidNote.note.en.includes(part), `Vvoidddd en: ${part}`);
   assert.match(voidNote.note.fi, /suorituskykymittari/);
-  // ZFXSTATIC comes right after the maintainer and lists the mods, the DLL content and the region names.
+  // ZFXSTATIC lists the mods, the DLL content and the region names.
   const zfx = person(PROJECT_PEOPLE, "ZFXSTATIC");
   assert.equal(zfx.role, "contributor");
-  assert.equal(PROJECT_PEOPLE[1].github, "ZFXSTATIC");
   for (const part of ["client mods", "Mods page", "Lady Luck", "Middleman", "Trials", "Main, Germany and US", "every current server"]) assert.ok(zfx.note.en.includes(part), `ZFXSTATIC en: ${part}`);
 
   // Harmonic: the work ported from Harmonic's Dauntless 1.4.4 fork (Harmonicrain/Undaunted 895f7c7),
