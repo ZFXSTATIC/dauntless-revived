@@ -63,6 +63,8 @@ const api = {
   getBranding: (): Promise<Branding> => ipcRenderer.invoke(IPC.getBranding),
   openExternal: (target: ExternalTarget): Promise<ActionResult> => ipcRenderer.invoke(IPC.openExternal, String(target)),
   openGameFolder: (): Promise<void> => ipcRenderer.invoke(IPC.openGameFolder),
+  getMods: (): Promise<Record<string, boolean> | null> => ipcRenderer.invoke(IPC.getMods),
+  setMod: (name: string, on: boolean): Promise<ActionResult> => ipcRenderer.invoke(IPC.setMod, String(name), on === true),
   logout: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.logout),
   installUpdate: (): Promise<void> => ipcRenderer.invoke(IPC.installUpdate),
   dismissNotice: (): Promise<void> => ipcRenderer.invoke(IPC.dismissNotice),

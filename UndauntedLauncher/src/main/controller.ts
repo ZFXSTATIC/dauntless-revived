@@ -60,7 +60,7 @@ import { compareManifests, resolveInside, type GameManifest, type ManifestFile }
 import { contentDownloadBase, DownloadError, DownloadJob } from "./downloader";
 import { AbortedError, hashFile, removePartFiles, verifyInstall, VerifiedCache } from "./verify";
 import { dllStatus, installPinnedDlls, DllError, win64Dir } from "./dlls";
-import { installClientMods } from "./client-mods";
+import { installClientMods, readInstalledMods, SWITCHABLE_MODS, writeInstalledMod } from "./client-mods";
 import { applyGameConfig } from "./engineini";
 import { locateExistingGame } from "./game-folder";
 import { buildLaunchArgs, describeLaunch, GameProcess, gameLocale, type LaunchRuntime, type SpawnFn } from "./launch";
@@ -1027,6 +1027,18 @@ export class Controller {
   async openGameFolder(): Promise<void> {
     const dir = this.installDir;
     if (existsSync(dir)) await this.p.openPath(dir);
+  }
+
+  // The Mods page's switches. null: no mods.txt yet (not installed). Not while the game runs: the mods
+  // read mods.txt when the game starts, so a change then would only look like it did something.
+  getMods(): Promise<Record<string, boolean> | null> {
+    return readInstalledMods(this.installDir);
+  }
+
+  async setMod(name: unknown, on: unknown): Promise<ActionResult> {
+    if (typeof name !== "string" || !SWITCHABLE_MODS.includes(name) || typeof on !== "boolean") return this.fail("bad_request");
+    if (this.game.running) return this.fail("already_running");
+    return (await writeInstalledMod(this.installDir, name, on)) ? { ok: true } : this.fail("config_failed");
   }
 
   // ------------------------------------------------------------------ install / repair

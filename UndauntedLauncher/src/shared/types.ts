@@ -283,6 +283,8 @@ export const IPC = {
   getBranding: "dr:get-branding",
   openExternal: "dr:open-external",
   openGameFolder: "dr:open-game-folder",
+  getMods: "dr:get-mods",
+  setMod: "dr:set-mod",
   logout: "dr:logout",
   installUpdate: "dr:install-update",
   windowMinimize: "dr:window-minimize",

@@ -3389,3 +3389,6 @@ img {
   flex: 0 0 18px;
   height: 40%;
 }
+
+.mod-switch { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.mod-switch-note { color: var(--dr-steel); font-size: 12px; }

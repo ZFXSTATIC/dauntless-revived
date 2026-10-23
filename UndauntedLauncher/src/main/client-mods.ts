@@ -221,3 +221,55 @@ export function addMissingModLines(text: string, defaults: string): string {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   return missing.length ? missing.join(eol) + eol + text : text;
 }
+
+// The Mods page's switches: which mods mods.txt turns on ("Name : 1"), and one mod switched on or off with
+// only its own line changed (the other lines, their order and the line endings stay exactly as they are).
+export const SWITCHABLE_MODS: readonly string[] = ["CraftStar", "BehemothHealthBars", "BehemothTracker", "ModMenu"];
+
+export function readModStates(text: string): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const m of text.matchAll(/^[ \t]*([A-Za-z0-9_]+)[ \t]*:[ \t]*([01])[ \t]*\r?$/gm)) {
+    if (SWITCHABLE_MODS.includes(m[1])) out[m[1]] = m[2] === "1";
+  }
+  return out;
+}
+
+export function setModLine(text: string, name: string, on: boolean): { text: string; changed: boolean } {
+  if (!SWITCHABLE_MODS.includes(name)) return { text, changed: false };
+  let changed = false;
+  const out = text.replace(/^([ \t]*)([A-Za-z0-9_]+)([ \t]*:[ \t]*)([01])([ \t]*)(\r?)$/gm, (line, pre: string, n: string, sep: string, v: string, post: string, cr: string) => {
+    if (n !== name || (v === "1") === on) return line;
+    changed = true;
+    return `${pre}${n}${sep}${on ? "1" : "0"}${post}${cr}`;
+  });
+  return { text: out, changed };
+}
+
+export function modsTxtPath(installDir: string): string {
+  return path.join(win64Dir(installDir), "ue4ss", "Mods", "mods.txt");
+}
+
+// null when there is no mods.txt yet (the game or the mods are not installed).
+export async function readInstalledMods(installDir: string): Promise<Record<string, boolean> | null> {
+  try {
+    return readModStates(await fsp.readFile(modsTxtPath(installDir), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+export async function writeInstalledMod(installDir: string, name: string, on: boolean): Promise<boolean> {
+  const file = modsTxtPath(installDir);
+  let text: string;
+  try {
+    text = await fsp.readFile(file, "utf8");
+  } catch {
+    return false;
+  }
+  const r = setModLine(text, name, on);
+  if (!r.changed) return true;
+  const tmp = `${file}.new`;
+  await fsp.writeFile(tmp, r.text, "utf8");
+  await fsp.rename(tmp, file);
+  return true;
+}

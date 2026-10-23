@@ -447,6 +447,8 @@ function registerIpc(c: Controller): void {
     return t === null ? { ok: false, error: { code: "unknown" } } : c.openExternal(t);
   });
   handle(IPC.openGameFolder, () => c.openGameFolder());
+  handle(IPC.getMods, () => c.getMods());
+  handle(IPC.setMod, (_e, name, on) => c.setMod(name, on));
   handle(IPC.logout, () => c.logout());
   handle(IPC.installUpdate, () => c.installUpdate());
   handle(IPC.dismissNotice, () => c.dismissNotice());

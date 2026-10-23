@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { disableModLines, insideRoot, installClientMods, safeRelative } from "../src/main/client-mods";
+import { disableModLines, insideRoot, installClientMods, readInstalledMods, readModStates, safeRelative, setModLine, writeInstalledMod } from "../src/main/client-mods";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
@@ -142,4 +142,31 @@ test("upgrading adds CraftStar once, preserving disabled mods and Keybinds order
     await installClientMods(t.res, t.game);
     assert.equal(readFileSync(t.at(mods), "utf8"), expected.replace("CraftStar : 1", "CraftStar : 0"));
   } finally { rmSync(t.root, { recursive: true, force: true }); }
+});
+
+test("the Mods page reads and switches single mods, changing only that line", () => {
+  const text = "BehemothHealthBars : 1\r\nModMenu : 1\r\nBehemothTracker : 0\r\n\r\n; Built-in keybinds, do not move up!\r\nKeybinds : 1\r\n";
+  assert.deepEqual(readModStates(text), { BehemothHealthBars: true, ModMenu: true, BehemothTracker: false });
+  const off = setModLine(text, "ModMenu", false);
+  assert.equal(off.changed, true);
+  assert.equal(off.text, text.replace("ModMenu : 1", "ModMenu : 0"));
+  assert.equal(setModLine(text, "ModMenu", true).changed, false, "already on: nothing to write");
+  assert.equal(setModLine(text, "Keybinds", false).changed, false, "built-in entries are never switched");
+  assert.equal(setModLine(text, "NotAMod", false).changed, false);
+});
+
+test("switching a mod writes mods.txt, and a missing mods.txt reports null", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "dr-mod-switch-"));
+  try {
+    assert.equal(await readInstalledMods(dir), null);
+    assert.equal(await writeInstalledMod(dir, "ModMenu", false), false);
+    const file = path.join(dir, "Archon", "Binaries", "Win64", "ue4ss", "Mods", "mods.txt");
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, "ModMenu : 1\nBehemothTracker : 1\n");
+    assert.equal(await writeInstalledMod(dir, "ModMenu", false), true);
+    assert.equal(readFileSync(file, "utf8"), "ModMenu : 0\nBehemothTracker : 1\n");
+    assert.deepEqual(await readInstalledMods(dir), { ModMenu: false, BehemothTracker: true });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

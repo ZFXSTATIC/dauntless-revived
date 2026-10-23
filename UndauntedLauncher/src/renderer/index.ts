@@ -1232,15 +1232,34 @@ function renderPartners(): void {
 
 // The optional client mods (client-mods/ in the repository, by ZFXSTATIC): what each one does.
 // Information only; the launcher installs them and the in-game Mod Menu switches them.
-const MODS: readonly { icon: IconName; name: StringKey; text: StringKey; use: StringKey }[] = [
-  { icon: "puzzle", name: "mod_cst_name", text: "mod_cst_text", use: "mod_cst_use" },
-  { icon: "heart", name: "mod_bhb_name", text: "mod_bhb_text", use: "mod_bhb_use" },
-  { icon: "hunt", name: "mod_trk_name", text: "mod_trk_text", use: "mod_trk_use" },
-  { icon: "settings", name: "mod_menu_name", text: "mod_menu_text", use: "mod_menu_use" },
+const MODS: readonly { id: string; icon: IconName; name: StringKey; text: StringKey; use: StringKey }[] = [
+  { id: "CraftStar", icon: "puzzle", name: "mod_cst_name", text: "mod_cst_text", use: "mod_cst_use" },
+  { id: "BehemothHealthBars", icon: "heart", name: "mod_bhb_name", text: "mod_bhb_text", use: "mod_bhb_use" },
+  { id: "BehemothTracker", icon: "hunt", name: "mod_trk_name", text: "mod_trk_text", use: "mod_trk_use" },
+  { id: "ModMenu", icon: "settings", name: "mod_menu_name", text: "mod_menu_text", use: "mod_menu_use" },
 ];
 
+// The switches on the Mods page: what mods.txt says right now (null: the game is not installed yet).
+let modStates: Record<string, boolean> | null = null;
+async function loadMods(): Promise<void> {
+  const next = await api.getMods();
+  if (JSON.stringify(next) !== JSON.stringify(modStates)) {
+    modStates = next;
+    if (state.view === "mods") renderMods();
+  }
+}
+
+function modSwitch(m: { id: string; name: StringKey }, on: boolean, locked: boolean): HTMLElement {
+  const sw = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": on ? "true" : "false", "aria-label": t(m.name), "data-fk": `mod-${m.id}`, disabled: locked });
+  onToggle(sw, (next) => {
+    void api.setMod(m.id, next).then(() => loadMods());
+  });
+  return h("div", { class: "mod-switch" }, sw, h("span", { class: "mod-switch-note" }, t("mods_switch_note")));
+}
+
 function renderMods(): void {
-  renderRegion($("#view-mods"), state.lang, () => [
+  const locked = !!state.snap?.game.running;
+  renderRegion($("#view-mods"), JSON.stringify([state.lang, modStates, locked]), () => [
     h("div", { class: "page mods-page" },
       h("h1", { class: "page-title", id: "mods-title" }, t("nav_mods")),
       h("p", { class: "page-sub" }, t("mods_intro")),
@@ -1250,6 +1269,7 @@ function renderMods(): void {
             h("strong", { class: "mod-name" }, icon(m.icon), t(m.name)),
             h("span", { class: "mod-text" }, t(m.text)),
             h("span", { class: "mod-use" }, t(m.use)),
+            modStates && m.id in modStates ? modSwitch(m, modStates[m.id], locked) : null,
           ),
         ),
       ),
@@ -1911,6 +1931,7 @@ function setView(v: View): void {
   }
   state.view = v;
   if (v === "news") state.newsSeen = true;
+  if (v === "mods") void loadMods();
   for (const view of VIEWS) $(`#view-${view}`).hidden = view !== v;
   $("#actionbar").hidden = false;
   // The Server page shows everything the side panel shows, in full: no need for both. The Credits
