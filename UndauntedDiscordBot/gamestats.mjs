@@ -11,9 +11,15 @@ export function parsePorts(value) {
   const ports=String(value||'').split(',').map(p=>Number(p.trim())).filter(p=>Number.isInteger(p) && p>0 && p<65536);
   return ports.length ? ports : DEFAULT_PORTS;
 }
+// Players on one server: its connected count, or (some workers do not report it) the players expected on a hunt.
+export function serverPlayers(s) {
+  const n=Number(s.connectedPlayers);
+  if(Number.isFinite(n) && n>=0) return n;
+  return Array.isArray(s.expectedPlayers) ? s.expectedPlayers.length : 0;
+}
 export function boxInfo(port,json) {
   const cap=json?.capacity||{};
-  const players=(json?.servers||[]).reduce((n,s)=>n+(Number(s.connectedPlayers)||0),0);
+  const players=(json?.servers||[]).reduce((n,s)=>n+serverPlayers(s),0);
   const cpu=Number(cap.cpu?.percent);
   return {port,name:BOX_NAMES[port]||`port ${port}`,up:!!json,running:Number(cap.running)||0,limit:Number(cap.limit)||0,
     players,cpu:Number.isFinite(cpu)?cpu:null,blocked:!!cap.cpu?.blocked};
@@ -21,7 +27,7 @@ export function boxInfo(port,json) {
 export function summarize(boxes) {
   let players=0,hunts=0,huntLimit=0;
   for(const box of boxes) {
-    for(const s of box.servers||[]) players+=Number(s.connectedPlayers)||0;
+    for(const s of box.servers||[]) players+=serverPlayers(s);
     hunts+=Number(box.capacity?.running)||0;
     huntLimit+=Number(box.capacity?.limit)||0;
   }
@@ -39,6 +45,18 @@ export async function fetchBoxes(ports,fetchImpl=fetch) {
   }
   return out;
 }
+// The number the launcher shows: everyone logged in, from the metagame's ServerStatus. null when it can't be read.
+export async function fetchLoggedIn(env=process.env,fetchImpl=fetch) {
+  const key=env.METAGAME_ADMIN_KEY; if(!key) return null;
+  try {
+    const url=`${env.METAGAME_URL||'http://127.0.0.1:61000'}/undaunted/api/ServerStatus`;
+    const res=await fetchImpl(url,{headers:{'x-undaunted-user-api-key':key},redirect:'error',signal:AbortSignal.timeout(5000)});
+    if(!res.ok) return null;
+    const json=await res.json();
+    if(json.limited || !Number.isInteger(json.playersOnline)) return null;
+    return json.playersOnline;
+  } catch { return null; }
+}
 export async function fetchStats(ports,fetchImpl=fetch) {
   const boxes=(await fetchBoxes(ports,fetchImpl)).filter(b=>b.json).map(b=>b.json);
   return boxes.length ? summarize(boxes) : null;
@@ -47,14 +65,14 @@ export async function fetchStats(ports,fetchImpl=fetch) {
 // A box is full when it holds its hunt limit or the CPU guard is holding hunts back.
 export const isFull=b=>b.up && b.limit>0 && (b.running>=b.limit || b.blocked);
 
-export function statusEmbed(infos) {
+export function statusEmbed(infos,loggedIn=null) {
   const full=infos.filter(isFull).length, down=infos.filter(b=>!b.up).length;
   const color=down||full===infos.length ? 0xe5484d : full ? 0xf2a33a : 0x4cc38a;
   const line=b=>!b.up ? '🔴 not answering' : `${isFull(b)?'🟠':'🟢'} ${b.running}/${b.limit} hunts, ${b.players} players`;
   const tot=infos.filter(b=>b.up).reduce((t,b)=>({r:t.r+b.running,l:t.l+b.limit,p:t.p+b.players}),{r:0,l:0,p:0});
   return new EmbedBuilder().setTitle('Dauntless Revived server status').setColor(color)
     .addFields(infos.map(b=>({name:b.name,value:line(b),inline:true})))
-    .addFields({name:'Total',value:`${tot.r}/${tot.l} hunts, ${tot.p} players online`})
+    .addFields({name:'Total',value:`${tot.r}/${tot.l} hunts, ${loggedIn==null?tot.p+' players online':loggedIn+' online ('+tot.p+' in a game)'}`})
     .setFooter({text:'🟢 room available   🟠 busy, new hunts may wait   🔴 down'}).setTimestamp();
 }
 export const STATUS_COMMAND=new SlashCommandBuilder().setName('status').setDescription('Show how busy the Dauntless Revived servers are').toJSON();
@@ -132,7 +150,7 @@ export class GameStats {
   }
   async refresh(guild) {
     const cfg=this.counters.state.guilds[guild.id]; if(!cfg) {console.log(`game stats: guild ${guild.id} has no counter category`);return;}
-    const stats=await fetchStats(this.ports); if(!stats) {console.log('game stats: no deploy server answered');return;}
+    const stats=await fetchStats(this.ports); const loggedIn=await fetchLoggedIn(); if(loggedIn!=null && stats) stats.Players=loggedIn; if(!stats) {console.log('game stats: no deploy server answered');return;}
     const categoryId=process.env.GAME_STATS_CATEGORY_ID || cfg.categoryId;
     const category=await guild.channels.fetch(categoryId);
     await this.counters.validate(guild,category);
@@ -159,7 +177,7 @@ export class GameStats {
     this.registerStatus().catch(e=>console.error(`Could not register /status: ${e.message}`));
     this.client.on(Events.InteractionCreate,async interaction=>{
       if(!interaction.isChatInputCommand() || interaction.commandName!=='status') return;
-      try {await interaction.reply({embeds:[statusEmbed(await this.infos())]});}
+      try {await interaction.reply({embeds:[statusEmbed(await this.infos(),await fetchLoggedIn())]});}
       catch(e) {console.error(`/status failed: ${e.message}`);}
     });
     setInterval(()=>this.poll().catch(e=>console.error(`Alert poll failed: ${e.message}`)),60000).unref();

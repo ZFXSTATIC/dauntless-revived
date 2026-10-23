@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parsePorts, summarize, fetchStats, DEFAULT_PORTS, boxInfo, isFull, statusEmbed} from './gamestats.mjs';
+import {serverPlayers, fetchLoggedIn, parsePorts, summarize, fetchStats, DEFAULT_PORTS, boxInfo, isFull, statusEmbed} from './gamestats.mjs';
 
 const mk=(running,limit,blocked=false)=>boxInfo(61041,{servers:[],capacity:{running,limit,cpu:{percent:50,blocked}}});
 
@@ -23,4 +23,18 @@ test('full means at the limit or held back by the CPU guard', () => {
 });
 test('status embed has a field per server plus a total', () => {
   assert.equal(statusEmbed([mk(1,5),boxInfo(61042,null)]).data.fields.length,3);
+});
+
+test('a worker that does not report connected players falls back to the expected players', () => {
+  assert.equal(serverPlayers({connectedPlayers:3,expectedPlayers:['a','b']}),3);
+  assert.equal(serverPlayers({expectedPlayers:['a','b']}),2);
+  assert.equal(serverPlayers({}),0);
+});
+test('logged-in count comes from the metagame ServerStatus and is null when limited or unreachable', async () => {
+  const env={METAGAME_ADMIN_KEY:'k'};
+  const ok=async(url,o)=>{assert.equal(o.headers['x-undaunted-user-api-key'],'k');return {ok:true,json:async()=>({playersOnline:118})};};
+  assert.equal(await fetchLoggedIn(env,ok),118);
+  assert.equal(await fetchLoggedIn(env,async()=>({ok:true,json:async()=>({playersOnline:0,limited:true})})),null);
+  assert.equal(await fetchLoggedIn(env,async()=>Promise.reject(new Error('down'))),null);
+  assert.equal(await fetchLoggedIn({},ok),null);
 });
