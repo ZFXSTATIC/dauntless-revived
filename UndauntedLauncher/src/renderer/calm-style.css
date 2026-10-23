@@ -1261,6 +1261,24 @@
   margin: 0;
 }
 
+/* ---- smooth: no scroll bars on the rail, panels and pages in the themes (the wheel and keys still scroll) */
+:root[data-theme] :is(.rail, .server-panel, .stage, .view, .settings-panel, .dropdown-list, .server-menu) {
+  scrollbar-width: none;
+}
+:root[data-theme] :is(.rail, .server-panel, .stage, .view, .settings-panel, .dropdown-list, .server-menu)::-webkit-scrollbar {
+  display: none;
+}
+/* Dusk: the server switcher opens beside the slim rail instead of inside it */
+:root[data-theme="dusk"] .rail {
+  overflow: visible;
+}
+:root[data-theme="dusk"] .server-menu {
+  left: calc(100% + 10px);
+  right: auto;
+  bottom: 0;
+  width: 260px;
+}
+
 /* The theme picker's previews: each theme's own colours, whichever theme is on. */
 .swatch-classic { background: #0c2b48; }
 .swatch-classic i:first-child { background: #1d4f78; }
