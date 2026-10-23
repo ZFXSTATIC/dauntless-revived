@@ -35,13 +35,16 @@ export function boxInfo(port,json) {
     max:effectiveLimit(running,limit,cpu,Number(cap.cpu?.limit)),
     players,cpu:Number.isFinite(cpu)?cpu:null,blocked:!!cap.cpu?.blocked};
 }
+// Players a hunt really holds on average, from the hunts running now (never below 1 or above the game's 4).
 export function summarize(boxes) {
-  let players=0,hunts=0,huntMax=0;
+  let players=0,hunts=0,huntMax=0,huntPlayers=0;
   for(const box of boxes) {
     const info=boxInfo(0,box);
     players+=info.players; hunts+=info.running; huntMax+=info.limit;
+    for(const s of box.servers||[]) if(isLocal(s) && (s.kind==='hunt' || s.kind==='tutorial')) huntPlayers+=serverPlayers(s);
   }
-  return {Players:players,Hunts:hunts,HuntsMax:huntMax,PlayersMax:huntMax*4};
+  const avg=hunts>0 ? Math.min(4,Math.max(1,huntPlayers/hunts)) : 2;
+  return {Players:players,Hunts:hunts,HuntsMax:huntMax,PlayersMax:Math.round(huntMax*avg)};
 }
 export async function fetchBoxes(ports,fetchImpl=fetch) {
   const out=[];
@@ -160,7 +163,7 @@ export class GameStats {
   }
   async refresh(guild) {
     const cfg=this.counters.state.guilds[guild.id]; if(!cfg) {console.log(`game stats: guild ${guild.id} has no counter category`);return;}
-    const stats=await fetchStats(this.ports); const loggedIn=await fetchLoggedIn(); if(loggedIn!=null && stats) stats.Players=loggedIn; if(!stats) {console.log('game stats: no deploy server answered');return;}
+    const stats=await fetchStats(this.ports); const loggedIn=await fetchLoggedIn(); if(loggedIn!=null && stats) {stats.Players=loggedIn;stats.PlayersMax=Math.max(stats.PlayersMax,loggedIn);} if(!stats) {console.log('game stats: no deploy server answered');return;}
     const categoryId=process.env.GAME_STATS_CATEGORY_ID || cfg.categoryId;
     const category=await guild.channels.fetch(categoryId);
     await this.counters.validate(guild,category);
