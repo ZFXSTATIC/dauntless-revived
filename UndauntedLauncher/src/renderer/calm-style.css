@@ -940,6 +940,314 @@
   border-left: 3px solid var(--edge-c);
 }
 
+/* ====================================================================================================
+   The new control set for Jade, Horizon and Dusk, written from scratch: square corners, two pixel
+   outlines in the theme colour, small capital labels, fills only on hover and for the one main action.
+   Nothing below depends on how the old controls looked. */
+
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) {
+  --fx-radius: 2px;
+  --fx-line: color-mix(in srgb, var(--calm-accent) 60%, transparent);
+  --fx-line-soft: color-mix(in srgb, var(--calm-accent) 30%, transparent);
+  --fx-wash: color-mix(in srgb, var(--calm-accent) 14%, transparent);
+}
+
+/* ---- buttons */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn {
+  min-height: 40px;
+  padding: 0 18px;
+  border: 2px solid var(--fx-line);
+  border-radius: var(--fx-radius);
+  background: transparent;
+  color: var(--dr-frost);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: none;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn:hover:not(:disabled) {
+  background: var(--fx-wash);
+  border-color: var(--calm-accent);
+  color: var(--dr-frost);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--calm-accent) 28%, transparent);
+  transform: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn:disabled {
+  border: 2px dashed var(--fx-line-soft);
+  background: transparent;
+  color: var(--calm-muted);
+  opacity: 0.7;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn:focus-visible,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .link-btn:focus-visible {
+  outline: 2px solid var(--dr-frost);
+  outline-offset: 2px;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn-primary {
+  border-color: var(--calm-accent);
+  background: var(--calm-accent);
+  color: var(--calm-on-accent);
+  box-shadow: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn-primary:hover:not(:disabled) {
+  background: var(--dr-glow);
+  border-color: var(--dr-glow);
+  color: var(--calm-on-accent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn-danger {
+  border-color: #e5534b;
+  background: transparent;
+  color: var(--dr-frost);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn-danger .icon {
+  color: #ff8d86;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn-danger:hover:not(:disabled) {
+  background: #e5534b;
+  border-color: #e5534b;
+  color: #1c0503;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .btn-danger:hover:not(:disabled) .icon {
+  color: #1c0503;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .link-btn {
+  color: var(--calm-accent);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal-actions .btn {
+  min-width: 140px;
+  border-radius: var(--fx-radius);
+}
+
+/* ---- the main action: a chamfered slab */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button {
+  border-radius: 0;
+  clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+  letter-spacing: 0.2em;
+  font-weight: 800;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-more {
+  clip-path: none;
+}
+
+/* ---- fields and dropdowns */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .input,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .textarea,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .select,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-button {
+  border: 2px solid var(--fx-line-soft);
+  border-radius: var(--fx-radius);
+  background: color-mix(in srgb, var(--calm-bg) 40%, transparent);
+  box-shadow: none;
+  color: var(--dr-frost);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .input:hover,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .select:hover,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-button:hover:not(:disabled) {
+  border-color: var(--fx-line);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .input:focus,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .textarea:focus,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .select:focus,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-button[aria-expanded="true"] {
+  border-color: var(--calm-accent);
+  box-shadow: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-list,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-menu,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu {
+  border: 2px solid var(--fx-line);
+  border-radius: var(--fx-radius);
+  background: var(--calm-surface);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-option,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-menu-item,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu-item {
+  border-radius: var(--fx-radius);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-option.active,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-option:hover,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-menu-item:hover,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu-item:hover {
+  background: var(--fx-wash);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-option[aria-selected="true"] {
+  background: var(--fx-wash);
+  box-shadow: inset 3px 0 0 var(--calm-accent);
+}
+
+/* ---- switches: a square track and a square knob */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .switch,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .mod-toggle {
+  width: 46px;
+  height: 24px;
+  border: 2px solid var(--fx-line);
+  border-radius: var(--fx-radius);
+  background: transparent;
+  box-shadow: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .switch::after,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .mod-toggle::after {
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 1px;
+  background: var(--calm-muted);
+  box-shadow: none;
+  transition: transform 0.14s ease, background 0.12s;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .switch[aria-checked="true"],
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .mod-toggle[aria-checked="true"] {
+  border-color: var(--calm-accent);
+  background: var(--fx-wash);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .switch[aria-checked="true"]::after,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .mod-toggle[aria-checked="true"]::after {
+  transform: translateX(22px);
+  background: var(--calm-accent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .mod-toggle:hover:not(:disabled),
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .switch:hover:not(:disabled) {
+  border-color: var(--calm-accent);
+  background: var(--fx-wash);
+}
+
+/* ---- tabs: a row of labels over a rule, the open one underlined in the theme colour */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tabs {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid var(--fx-line-soft);
+  border-radius: 0;
+  background: transparent;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab {
+  height: 42px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--calm-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab:hover {
+  background: var(--fx-wash);
+  color: var(--dr-frost);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab[aria-selected="true"] {
+  background: transparent;
+  color: var(--dr-frost);
+  box-shadow: inset 0 -4px 0 var(--calm-accent);
+}
+
+/* ---- badges, steps, bars, avatars */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .badge {
+  border-radius: var(--fx-radius);
+  border: 2px solid var(--fx-line-soft);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .step-dot {
+  border-radius: var(--fx-radius);
+  border: 2px solid var(--fx-line-soft);
+  background: transparent;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .step.current .step-dot {
+  border-color: var(--calm-accent);
+  background: var(--calm-accent);
+  color: var(--calm-on-accent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .step.done .step-dot {
+  border-color: var(--calm-accent);
+  background: transparent;
+  color: var(--calm-accent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .bar,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance-bar {
+  height: 8px;
+  border-radius: 0;
+  border: 1px solid var(--fx-line-soft);
+  background: transparent;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .bar-fill,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance-bar > span,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .k-hunt .instance-bar > span {
+  border-radius: 0;
+  background: var(--calm-accent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance-icon,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .player-avatar,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .avatar {
+  border-radius: var(--fx-radius);
+  border: 2px solid var(--fx-line-soft);
+  background: transparent;
+  color: var(--calm-accent);
+}
+
+/* ---- navigation, titles, boxes: small capitals and square edges */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item {
+  border-radius: var(--fx-radius);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .card,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .mod-card,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .account-chip,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .partner-mini,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel {
+  border-radius: var(--fx-radius);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .card-title,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .eyebrow,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .sp-kicker,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .sp-section-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--calm-accent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .page-title {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal {
+  border: 2px solid var(--fx-line);
+  border-radius: var(--fx-radius);
+}
+
+/* The tab names stay visible on narrow windows (short labels, so they fit), with the icon beside them */
+@container settings (max-width: 520px) {
+  :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab-label {
+    display: inline;
+  }
+  :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab {
+    gap: 5px;
+    padding: 0 4px;
+    font-size: 10.5px;
+    letter-spacing: 0.05em;
+  }
+  :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab .icon {
+    width: 15px;
+    height: 15px;
+  }
+}
+
 /* The theme picker's previews: each theme's own colours, whichever theme is on. */
 .swatch-classic { background: #0c2b48; }
 .swatch-classic i:first-child { background: #1d4f78; }
