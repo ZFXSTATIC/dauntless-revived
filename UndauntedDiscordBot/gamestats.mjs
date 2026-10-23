@@ -1,7 +1,7 @@
 import {ChannelType, EmbedBuilder, Events, PermissionFlagsBits, Routes, SlashCommandBuilder} from 'discord.js';
 
 export const DEFAULT_PORTS=[61001,61041,61042,61051];
-export const BOX_NAMES={61001:'MAIN',61041:'North America',61042:'Canada',61051:'Germany (London)'};
+export const BOX_NAMES={61001:'MAIN',61041:'North America',61042:'Canada',61051:'London'};
 export const DEFAULT_ALERT_CHANNELS=['1560031651747201104','1553104469774962919'];
 export const ALERT_AFTER_POLLS=10, DOWN_AFTER_POLLS=3, RECOVER_AFTER_POLLS=5;
 export const ALERT_COOLDOWN_MS=60*60*1000, MAX_ALERTS_PER_HOUR=6;
