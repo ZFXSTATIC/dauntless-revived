@@ -32,7 +32,7 @@ is written up here.
 [Reference](https://mixutin.github.io/dauntless-revived/reference/)
 [Hosting partner · EU Gamehost](https://mixutin.github.io/dauntless-revived/setup/hosting-partner.html)
 [Join Discord](https://discord.gg/ZJRprHzsgu)
-[Optional Patreon support](https://patreon.com/DauntlessRevived)
+[Optional Patreon support](https://www.patreon.com/cw/RamsgateReborn)
 [Roadmap](https://mixutin.github.io/dauntless-revived/roadmap.html)
 
 ## Patreons
