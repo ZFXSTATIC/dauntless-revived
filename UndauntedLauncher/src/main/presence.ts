@@ -6,12 +6,14 @@
 import net from "node:net";
 import path from "node:path";
 import type { Snapshot } from "../shared/types";
+import { DISCORD_URL } from "./links";
 
 export interface Activity {
   details: string;
   state?: string;
   timestamps?: { start: number };
   assets?: { large_image: string; large_text: string };
+  buttons?: { label: string; url: string }[];
 }
 
 // Discord limits a presence update to one every 15 seconds.
@@ -27,12 +29,14 @@ export function buildActivity(snap: Snapshot, gameStartedAt: number | null): Act
   const online = snap.status && !hide && !snap.status.limited ? snap.status.playersOnline : null;
   const where = [server, online !== null ? `${online} online` : null].filter(Boolean).join(" · ");
   const assets = { large_image: "logo", large_text: "Dauntless Revived" };
+  // A clickable button on the profile card (Discord shows it to others, not to the player themselves).
+  const buttons = [{ label: "Join the Discord", url: DISCORD_URL }];
   if (snap.game.running) {
-    return { details: "Hunting in Dauntless Revived", ...(where ? { state: where } : {}), ...(gameStartedAt ? { timestamps: { start: gameStartedAt } } : {}), assets };
+    return { details: "Hunting in Dauntless Revived", ...(where ? { state: where } : {}), ...(gameStartedAt ? { timestamps: { start: gameStartedAt } } : {}), assets, buttons };
   }
-  if (snap.phase === "installing") return { details: "Installing the game", assets };
-  if (snap.phase === "ready") return { details: "In the launcher", state: "Ready to play", assets };
-  return { details: "In the launcher", assets };
+  if (snap.phase === "installing") return { details: "Installing the game", assets, buttons };
+  if (snap.phase === "ready") return { details: "In the launcher", state: "Ready to play", assets, buttons };
+  return { details: "In the launcher", assets, buttons };
 }
 
 // Discord's frame: a 32-bit opcode and a 32-bit length (little endian), then JSON.

@@ -4,41 +4,33 @@
    paint, engraved lines and angled gold plate. Taking this file's link out of index.html brings the
    bevelled look back. */
 
-:root[data-theme="calm"] {
-  --calm-bg: #08121d;
-  --calm-surface: #0e1f31;
-  --calm-raised: #14304a;
-  --calm-line: rgb(255 255 255 / 0.08);
-  --calm-accent: #5cc8e8;
-  --calm-radius: 12px;
-}
 
 /* ---- frame */
-:root[data-theme="calm"] .titlebar {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar {
   background: var(--calm-bg);
   box-shadow: none;
   border-bottom: 1px solid var(--calm-line);
 }
-:root[data-theme="calm"] .titlebar::before,
-:root[data-theme="calm"] .titlebar::after {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar::before,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar::after {
   display: none;
 }
-:root[data-theme="calm"] .rail {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .rail {
   background: var(--calm-bg);
   box-shadow: none;
   border-right: 1px solid var(--calm-line);
 }
-:root[data-theme="calm"] .actionbar {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .actionbar {
   background: color-mix(in srgb, var(--calm-bg) 92%, transparent);
   box-shadow: none;
   border-top: 1px solid var(--calm-line);
 }
 
 /* ---- navigation: soft rows, the current page marked by a tinted pill and an accent bar */
-:root[data-theme="calm"] .nav {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav {
   gap: 2px;
 }
-:root[data-theme="calm"] .nav-item {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item {
   margin-left: 0;
   width: 100%;
   height: 40px;
@@ -46,14 +38,14 @@
   border-radius: 8px;
   background: transparent;
   text-shadow: none;
-  color: #b9c6d3;
+  color: var(--calm-muted);
   font-weight: 600;
 }
-:root[data-theme="calm"] .nav-item:hover {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item:hover {
   background: rgb(255 255 255 / 0.05);
   color: #fff;
 }
-:root[data-theme="calm"] .nav-item[aria-current="page"] {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item[aria-current="page"] {
   margin-left: 0;
   width: 100%;
   padding-left: 12px;
@@ -62,134 +54,449 @@
   color: #fff;
   filter: none;
 }
-:root[data-theme="calm"] .nav-item .icon,
-:root[data-theme="calm"] .nav-item[aria-current="page"] .icon {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item .icon,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item[aria-current="page"] .icon {
   width: 20px;
   height: 20px;
   filter: none;
-  color: #8fa3b5;
+  color: var(--calm-muted);
 }
-:root[data-theme="calm"] .nav-item[aria-current="page"] .icon {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .nav-item[aria-current="page"] .icon {
   color: var(--calm-accent);
 }
 
 /* ---- surfaces */
-:root[data-theme="calm"] .card,
-:root[data-theme="calm"] .account-chip,
-:root[data-theme="calm"] .partner-mini,
-:root[data-theme="calm"] .settings-panel > .card,
-:root[data-theme="calm"] .instance {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .card,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .account-chip,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .partner-mini,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel > .card,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .instance {
   border: 1px solid var(--calm-line);
   border-radius: var(--calm-radius);
   background: var(--calm-surface);
   box-shadow: none;
 }
-:root[data-theme="calm"] .partner-mini:hover:not(:disabled),
-:root[data-theme="calm"] .account-switch:hover:not(:disabled) {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .partner-mini:hover:not(:disabled),
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .account-switch:hover:not(:disabled) {
   background: var(--calm-raised);
 }
-:root[data-theme="calm"] .badge {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .badge {
   border: 0;
   border-radius: 999px;
   background: rgb(255 255 255 / 0.07);
 }
-:root[data-theme="calm"] .server-panel {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .server-panel {
   background: color-mix(in srgb, var(--calm-bg) 82%, transparent);
   border-left: 1px solid var(--calm-line);
   box-shadow: none;
 }
 
 /* ---- buttons */
-:root[data-theme="calm"] .btn {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .btn {
   border: 1px solid var(--calm-line);
   border-radius: 9px;
   background: var(--calm-raised);
   box-shadow: none;
 }
-:root[data-theme="calm"] .btn:hover:not(:disabled) {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--calm-raised) 70%, var(--calm-accent));
 }
-:root[data-theme="calm"] .btn-primary {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .btn-primary {
   border-color: transparent;
   background: var(--calm-accent);
-  color: #04202b;
+  color: var(--calm-on-accent);
   box-shadow: none;
 }
 
 /* ---- PLAY: one flat gold pill instead of the angled bevelled plate */
-:root[data-theme="calm"] .big-button {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button {
   clip-path: none;
   border-radius: 14px;
-  background: linear-gradient(180deg, #f6cf62, #e3a92c);
-  color: #2e1e03;
+  background: linear-gradient(180deg, var(--calm-play-hi), var(--calm-play-lo));
+  color: var(--calm-play-ink);
   text-shadow: none;
   letter-spacing: 0.1em;
   filter: none;
-  box-shadow: 0 6px 20px rgb(226 180 64 / 0.22);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--calm-play-lo) 30%, transparent);
 }
-:root[data-theme="calm"] .big-button::before {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button::before {
   display: none;
 }
-:root[data-theme="calm"] .big-button:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ffdc78, #eeb637);
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button:hover:not(:disabled) {
+  background: var(--calm-play-hi);
   filter: none;
-  box-shadow: 0 8px 26px rgb(255 205 90 / 0.35);
+  box-shadow: 0 8px 26px color-mix(in srgb, var(--calm-play-hi) 40%, transparent);
 }
-:root[data-theme="calm"] .big-button:active:not(:disabled) {
-  background: #d49a22;
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button:active:not(:disabled) {
+  background: var(--calm-play-lo);
 }
-:root[data-theme="calm"] .big-button:disabled {
-  background: #1d2c3b;
-  color: #7d8fa0;
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button:disabled {
+  background: var(--calm-raised);
+  color: var(--calm-muted);
   box-shadow: none;
 }
-:root[data-theme="calm"] .big-button.is-running,
-:root[data-theme="calm"] .big-button.is-running:disabled,
-:root[data-theme="calm"] .big-button.is-pause {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-running,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-running:disabled,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-pause {
   background: var(--calm-raised);
   color: #fff;
 }
 
 /* ---- steps and settings tabs */
-:root[data-theme="calm"] .step-dot {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .step-dot {
   border: 1px solid var(--calm-line);
   background: var(--calm-raised);
   box-shadow: none;
 }
-:root[data-theme="calm"] .step.current .step-dot {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .step.current .step-dot {
   background: var(--calm-accent);
   border-color: transparent;
-  color: #04202b;
+  color: var(--calm-on-accent);
   box-shadow: none;
 }
-:root[data-theme="calm"] .step.done .step-dot {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .step.done .step-dot {
   border-color: transparent;
   color: var(--calm-accent);
 }
-:root[data-theme="calm"] .settings-tabs {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tabs {
   border-radius: 10px;
   border: 1px solid var(--calm-line);
   background: var(--calm-surface);
   box-shadow: none;
 }
-:root[data-theme="calm"] .settings-tab[aria-selected="true"] {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab[aria-selected="true"] {
   border-radius: 8px;
   background: var(--calm-raised);
   box-shadow: inset 0 -2px 0 var(--calm-accent);
 }
 
 /* ---- dialogs and menus */
-:root[data-theme="calm"] .modal,
-:root[data-theme="calm"] .dropdown-list,
-:root[data-theme="calm"] .server-menu,
-:root[data-theme="calm"] .play-menu {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .modal,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .dropdown-list,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .server-menu,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu {
   border: 1px solid var(--calm-line);
   border-radius: var(--calm-radius);
   background: var(--calm-surface);
 }
-:root[data-theme="calm"] .modal::before,
-:root[data-theme="calm"] .modal::after {
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .modal::before,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .modal::after {
   display: none;
+}
+
+/* ---- the three flat themes' colours */
+:root[data-theme="calm"] {
+  --calm-bg: #08121d;
+  --calm-surface: #0e1f31;
+  --calm-raised: #14304a;
+  --calm-line: rgb(255 255 255 / 0.08);
+  --calm-accent: #5cc8e8;
+  --calm-on-accent: #04202b;
+  --calm-muted: #a9b9c8;
+  --calm-play-hi: #f6cf62;
+  --calm-play-lo: #e3a92c;
+  --calm-play-ink: #2e1e03;
+  --calm-radius: 12px;
+}
+
+:root[data-theme="horizon"] {
+  --calm-bg: #14110f;
+  --calm-surface: #1d1713;
+  --calm-raised: #2a211a;
+  --calm-line: rgb(255 240 220 / 0.1);
+  --calm-accent: #ff8a3d;
+  --calm-on-accent: #1a0d02;
+  --calm-muted: #b8aa9c;
+  --calm-play-hi: #ff9d58;
+  --calm-play-lo: #e8692a;
+  --calm-play-ink: #1a0d02;
+  --calm-radius: 10px;
+  --dr-ink: #0d0a08;
+  --dr-navy: #14110f;
+  --dr-deep: #2a211a;
+  --dr-azure: #b5561a;
+  --dr-ice: #ff8a3d;
+  --dr-glow: #ffb070;
+  --dr-steel: #b8aa9c;
+  --dr-frost: #f6efe8;
+}
+
+:root[data-theme="dusk"] {
+  --calm-bg: #0e0919;
+  --calm-surface: #181029;
+  --calm-raised: #2a1c4a;
+  --calm-line: rgb(235 220 255 / 0.1);
+  --calm-accent: #b690ff;
+  --calm-on-accent: #170a2e;
+  --calm-muted: #b5a8cc;
+  --calm-play-hi: #c9a6ff;
+  --calm-play-lo: #8f5ce6;
+  --calm-play-ink: #170a2e;
+  --calm-radius: 16px;
+  --rail-w: 76px;
+  --dr-ink: #08050f;
+  --dr-navy: #0e0919;
+  --dr-deep: #2a1c4a;
+  --dr-azure: #6c40c0;
+  --dr-ice: #b690ff;
+  --dr-glow: #d4bcff;
+  --dr-steel: #b5a8cc;
+  --dr-frost: #f4eefc;
+}
+
+/* ---- Horizon: the pages run along the top, art behind the page */
+:root[data-theme="horizon"] .shell {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+:root[data-theme="horizon"] .rail {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 56px;
+  padding: 0 16px;
+  overflow: visible;
+  border-right: 0;
+  border-bottom: 1px solid var(--calm-line);
+}
+:root[data-theme="horizon"] .game-tile {
+  flex: none;
+  display: flex;
+}
+:root[data-theme="horizon"] .game-tile .tile-logo {
+  width: auto;
+  max-width: none;
+  height: 38px;
+}
+:root[data-theme="horizon"] .tile-version {
+  display: none;
+}
+:root[data-theme="horizon"] .nav {
+  display: flex;
+  flex: 1;
+  margin: 0;
+  gap: 2px;
+}
+:root[data-theme="horizon"] .nav-item {
+  width: auto;
+  height: 36px;
+  padding: 0 10px;
+  gap: 7px;
+}
+:root[data-theme="horizon"] .nav-item[aria-current="page"] {
+  width: auto;
+  padding: 0 10px;
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--calm-accent);
+  border-radius: 8px 8px 0 0;
+}
+:root[data-theme="horizon"] .rail-foot {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  gap: 12px;
+}
+:root[data-theme="horizon"] .account-chip {
+  width: 164px;
+  min-height: 38px;
+  padding: 4px 8px;
+}
+:root[data-theme="horizon"] .account-chip:has(.account-switch) {
+  padding: 0;
+}
+:root[data-theme="horizon"] .account-switch {
+  min-height: 38px;
+  padding: 4px 28px 4px 8px;
+}
+:root[data-theme="horizon"] .partner-mini {
+  width: auto;
+  padding: 4px 10px;
+}
+:root[data-theme="horizon"] .partner-mini-label {
+  display: none;
+}
+:root[data-theme="horizon"] .partner-mini img {
+  height: 22px;
+  width: auto;
+}
+:root[data-theme="horizon"] .server-menu {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: auto;
+  width: 280px;
+}
+:root[data-theme="horizon"] .rail-links {
+  gap: 6px;
+}
+
+/* ---- Dusk: a slim icon rail, rounded everything, violet */
+:root[data-theme="dusk"] .rail {
+  align-items: center;
+  padding: 10px 8px;
+}
+:root[data-theme="dusk"] .game-tile .tile-logo {
+  max-width: 52px;
+}
+:root[data-theme="dusk"] .tile-version,
+:root[data-theme="dusk"] .partner-mini,
+:root[data-theme="dusk"] .account-text,
+:root[data-theme="dusk"] .account-switch::after {
+  display: none;
+}
+:root[data-theme="dusk"] .nav {
+  width: 100%;
+}
+:root[data-theme="dusk"] .nav-item,
+:root[data-theme="dusk"] .nav-item[aria-current="page"] {
+  position: relative;
+  justify-content: center;
+  height: 48px;
+  padding: 0;
+  font-size: 0;
+  border-radius: 14px;
+}
+:root[data-theme="dusk"] .nav-item[aria-current="page"] {
+  background: var(--calm-raised);
+  box-shadow: none;
+}
+:root[data-theme="dusk"] .nav-item .icon {
+  width: 24px;
+  height: 24px;
+}
+:root[data-theme="dusk"] .nav-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 14px;
+  height: 14px;
+}
+:root[data-theme="dusk"] .rail-foot {
+  width: 100%;
+  justify-items: center;
+}
+:root[data-theme="dusk"] .account-chip,
+:root[data-theme="dusk"] .account-chip:has(.account-switch) {
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 14px;
+}
+:root[data-theme="dusk"] .account-switch {
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  justify-content: center;
+}
+:root[data-theme="dusk"] .server-menu {
+  left: 0;
+  right: auto;
+  width: 260px;
+}
+:root[data-theme="dusk"] .rail-links {
+  flex-direction: column;
+  gap: 6px;
+}
+:root[data-theme="dusk"] .rail-icons {
+  flex-direction: column;
+}
+:root[data-theme="dusk"] .big-button {
+  border-radius: 999px;
+}
+:root[data-theme="dusk"] .card,
+:root[data-theme="dusk"] .instance {
+  border-radius: 18px;
+}
+
+/* ---- the art behind Horizon and Dusk: the launcher's own scene steps aside */
+:root:is([data-theme="horizon"], [data-theme="dusk"]) .scene {
+  display: none;
+}
+:root[data-theme="horizon"] .hero {
+  background: var(--calm-bg) url("./brand/theme-ember.webp") center / cover no-repeat;
+}
+:root[data-theme="dusk"] .hero {
+  background: var(--calm-bg) url("./brand/theme-dusk.webp") center / cover no-repeat;
+}
+:root:is([data-theme="horizon"], [data-theme="dusk"]) .hero-shade {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--calm-bg) 92%, transparent) 0%, color-mix(in srgb, var(--calm-bg) 70%, transparent) 45%, color-mix(in srgb, var(--calm-bg) 40%, transparent) 100%);
+}
+
+/* ---- settings: flat tabs and rows instead of the game's blue tab buttons and steel frame */
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tabs {
+  gap: 4px;
+  padding: 4px;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab {
+  height: 36px;
+  border: 0;
+  border-image: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--calm-muted);
+  text-shadow: none;
+  filter: none;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab:hover {
+  background: rgb(255 255 255 / 0.05);
+  color: var(--dr-frost);
+  filter: none;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab[aria-selected="true"] {
+  background: var(--calm-raised);
+  color: var(--dr-frost);
+  filter: none;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-tab:focus-visible {
+  outline: 2px solid var(--calm-accent);
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel {
+  border: 1px solid var(--calm-line);
+  border-radius: var(--calm-radius);
+  background: var(--calm-surface);
+  box-shadow: none;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .card-title,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .card-title-text {
+  color: var(--calm-muted);
+  text-shadow: none;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .settings-row {
+  border: 1px solid var(--calm-line);
+  border-radius: 10px;
+  background: transparent;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .settings-row:hover,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel .settings-row:focus-within {
+  border-color: var(--calm-accent);
+  background: color-mix(in srgb, var(--calm-accent) 8%, transparent);
+  box-shadow: none;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .info-tip::after {
+  border-radius: 8px;
+  border-color: var(--calm-line);
+  background: var(--calm-raised);
+  box-shadow: none;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .input,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .textarea,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .select {
+  border-radius: 9px;
+  border: 1px solid var(--calm-line);
+  background: var(--calm-bg);
+  box-shadow: none;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .input:focus,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .textarea:focus,
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .select:focus {
+  border-color: var(--calm-accent);
+  box-shadow: none;
+}
+:root:is([data-theme="calm"], [data-theme="horizon"], [data-theme="dusk"]) .switch[aria-checked="true"] {
+  background: var(--calm-accent);
+  border-color: transparent;
 }
 
 /* The theme picker's previews: each theme's own colours, whichever theme is on. */
@@ -202,3 +509,16 @@
 .swatch-horizon { background: #14110f; }
 .swatch-horizon i:first-child { background: #2a211a; }
 .swatch-horizon i:last-child { background: #ff8a3d; }
+
+.swatch-dusk { background: #0e0919; }
+.swatch-dusk i:first-child { background: #2a1c4a; }
+.swatch-dusk i:last-child { background: #b690ff; }
+
+/* Horizon on a narrower window: the pages along the top keep only their icons. */
+@media (max-width: 1240px) {
+  :root[data-theme="horizon"] .nav-item,
+  :root[data-theme="horizon"] .nav-item[aria-current="page"] {
+    font-size: 0;
+    padding: 0 12px;
+  }
+}

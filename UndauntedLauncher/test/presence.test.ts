@@ -22,6 +22,8 @@ test("presence says what the player is doing, and hides the server in streamer m
   const hidden = buildActivity(snap({ running: true, streamer: true }), 1000);
   assert.equal(hidden?.state, undefined);
   assert.equal(buildActivity(snap({ phase: "installing" }), null)?.details, "Installing the game");
+  assert.deepEqual(buildActivity(snap(), null)?.buttons, [{ label: "Join the Discord", url: "https://discord.gg/dauntlessrevived" }]);
+  assert.equal(hidden?.buttons?.length, 1, "the invite stays in streamer mode");
 });
 
 test("presence is off when the player turned it off", () => {

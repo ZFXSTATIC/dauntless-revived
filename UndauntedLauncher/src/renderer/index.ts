@@ -35,9 +35,9 @@ const api = window.launcher;
 // Themes are not released yet: until THEMES_ENABLED is switched on, the launcher always uses Classic and
 // shows no theme choice. (A dev server page opened with ?themes can preview them.)
 const THEMES_ENABLED = new URLSearchParams(window.location.search).has("themes");
-const THEMES = ["classic", "calm", "horizon"] as const;
+const THEMES = ["classic", "calm", "horizon", "dusk"] as const;
 type Theme = (typeof THEMES)[number];
-const THEME_NAMES: Record<Theme, string> = { classic: "Classic", calm: "Calm", horizon: "Horizon" };
+const THEME_NAMES: Record<Theme, string> = { classic: "Classic", calm: "Calm", horizon: "Horizon", dusk: "Dusk" };
 function storedTheme(): Theme | null {
   try {
     const v = window.localStorage.getItem("dr-theme");
