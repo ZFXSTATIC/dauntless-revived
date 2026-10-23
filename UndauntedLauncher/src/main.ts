@@ -32,7 +32,8 @@ import { boundedString, externalTarget, isTrustedPageUrl, relayPortOverride, set
 import { INVITE_SCHEME, parseInvite } from "./shared/invite";
 import { IPC, type Snapshot, type OfflineStatus, type TaskProgress } from "./shared/types";
 import { systemLanguage, translate } from "./shared/i18n";
-import { APP_ID, SQUIRREL_NAME, UPDATE_FEED_URL } from "./main/constants";
+import { APP_ID, DISCORD_CLIENT_ID, SQUIRREL_NAME, UPDATE_FEED_URL } from "./main/constants";
+import { buildActivity, DiscordPresence } from "./main/presence";
 import { LocalStackManager } from "./main/local-stack";
 import { makeLocalStack } from "./main/local-stack-factory";
 
@@ -69,6 +70,9 @@ const CSP =
   "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
 let mainWindow: BrowserWindow | null = null;
 let controller: Controller | null = null;
+// Discord Rich Presence (src/main/presence.ts): off until a client id is set in constants.ts or DR_DISCORD_CLIENT_ID.
+const presence = new DiscordPresence(process.env.DR_DISCORD_CLIENT_ID ?? DISCORD_CLIENT_ID);
+let gameStartedAt: number | null = null;
 let pendingInviteLink: string | null = null;
 let quitting = false;
 let linuxUpdate: LinuxUpdate | null = null;
@@ -518,7 +522,11 @@ function makePlatform(): Platform {
     openPath: async (dir) => {
       await shell.openPath(dir);
     },
-    emitSnapshot: (s) => send(IPC.snapshot, s),
+    emitSnapshot: (s) => {
+      gameStartedAt = s.game.running ? (gameStartedAt ?? Date.now()) : null;
+      presence.set(buildActivity(s, gameStartedAt));
+      send(IPC.snapshot, s);
+    },
     emitProgress: (p) => send(IPC.progress, p),
     emitOfflineStatus: (s) => send(IPC.offlineStatusChanged, s),
     findTailscale: () => findTailscale(process.env, existsSync, process.platform),
@@ -620,6 +628,7 @@ if (!started) {
     });
 
     app.on("before-quit", () => {
+      presence.close();
       quitting = true;
     });
 

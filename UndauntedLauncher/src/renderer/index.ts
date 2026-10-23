@@ -24,9 +24,40 @@ type Modal =
   | { kind: "logout" }
   | { kind: "leave" }
   | { kind: "remove_server"; id: string; name: string }
-  | { kind: "offline_restore" };
+  | { kind: "offline_restore" }
+  // Shown once, on the first launch: which look to use (also in Settings).
+  | { kind: "theme" };
 
 const api = window.launcher;
+
+// The look of the page. A page preference, kept next to the page (not in the launcher's settings file);
+// no stored choice means the first launch, which asks once.
+// Themes are not released yet: until THEMES_ENABLED is switched on, the launcher always uses Classic and
+// shows no theme choice. (A dev server page opened with ?themes can preview them.)
+const THEMES_ENABLED = new URLSearchParams(window.location.search).has("themes");
+const THEMES = ["classic", "calm", "horizon"] as const;
+type Theme = (typeof THEMES)[number];
+const THEME_NAMES: Record<Theme, string> = { classic: "Classic", calm: "Calm", horizon: "Horizon" };
+function storedTheme(): Theme | null {
+  try {
+    const v = window.localStorage.getItem("dr-theme");
+    return THEMES.find((x) => x === v) ?? null;
+  } catch {
+    return null;
+  }
+}
+let theme: Theme = THEMES_ENABLED ? storedTheme() ?? "classic" : "classic";
+document.documentElement.dataset.theme = theme;
+function setTheme(next: Theme): void {
+  if (!THEMES_ENABLED) return;
+  theme = next;
+  document.documentElement.dataset.theme = next;
+  try {
+    window.localStorage.setItem("dr-theme", next);
+  } catch {
+    // The choice then lasts until the launcher closes.
+  }
+}
 const ART_URL = /^dr-art:\/\/bg\/[0-9a-f]{64}$/;
 const TIME_LOCALES: Record<Language, string> = { en: "en-GB", fi: "fi-FI", de: "de-DE", es: "es-ES", fr: "fr-FR", it: "it-IT", ja: "ja-JP", pt: "pt-BR", ru: "ru-RU" };
 const GAME_LANGUAGE_NAMES: Record<Exclude<GameLanguage, "auto">, string> = { "en-US": "English", "de-DE": "Deutsch", "es-ES": "Español", "fr-FR": "Français", "it-IT": "Italiano", "ja-JP": "日本語", "pt-BR": "Português (Brasil)", "ru-RU": "Русский" };
@@ -1502,6 +1533,15 @@ function renderSettings(): void {
       infoRow(h("label", { class: "settings-row-title", for: "game-language-select" }, t("set_game_language")), t("set_game_language_text"), gameLanguage),
     );
 
+    const appearance = !THEMES_ENABLED ? null : card(
+      "settings-section",
+      h("h2", { class: "card-title" }, t("set_theme")),
+      themeChoices(() => {
+        forceRender($("#view-settings"));
+        renderSettings();
+      }),
+    );
+
     const account = card(
       "settings-section",
       h("h2", { class: "card-title" }, t("set_account")),
@@ -1564,6 +1604,10 @@ function renderSettings(): void {
       h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title", id: "streamer-label" }, t("set_streamer")), h("span", { class: "settings-row-sub" }, t("set_streamer_help"))), streamerSwitch),
     );
 
+    const presenceSwitch = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": snap.settings.discordPresence === false ? "false" : "true", "aria-labelledby": "presence-label", "data-fk": "presence" });
+    onToggle(presenceSwitch, (on) => void api.setSettings({ discordPresence: on }));
+    streaming.append(h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title", id: "presence-label" }, t("set_presence")), h("span", { class: "settings-row-sub" }, t("set_presence_help"))), presenceSwitch));
+
     const about = card(
       "settings-section",
       h("h2", { class: "card-title" }, t("set_about")),
@@ -1587,7 +1631,7 @@ function renderSettings(): void {
       game: [game],
       graphics: [graphics],
       account: [account, h("p", {}, "On Windows, Play reports your motherboard UUID and available TPM public-key hash to the selected server for optional moderator device restrictions. The server stores keyed hashes. These identifiers are not verified hardware attestation; a TPM is not required."), otherServers],
-      launcher: [language, offlineCard, troubleshooting, streaming, about],
+      launcher: [language, ...(appearance ? [appearance] : []), offlineCard, troubleshooting, streaming, about],
     };
     const tabs = h("div", { class: "settings-tabs", role: "tablist", "aria-label": t("set_title") });
     for (const tab of SETTINGS_TABS) {
@@ -1958,6 +2002,26 @@ function closeModal(): void {
   state.modalReturnFocus?.focus?.();
 }
 
+function themeChoices(onPick: () => void): HTMLElement {
+  return h(
+    "div",
+    { class: "theme-grid", role: "group", "aria-label": t("set_theme") },
+    ...THEMES.map((id) => {
+      const card = h(
+        "button",
+        { type: "button", class: "theme-card", "aria-pressed": id === theme ? "true" : "false", "data-fk": `theme-${id}` },
+        h("span", { class: `theme-swatch swatch-${id}`, "aria-hidden": "true" }, h("i"), h("i")),
+        h("span", { class: "theme-name" }, THEME_NAMES[id]),
+      );
+      card.addEventListener("click", () => {
+        setTheme(id);
+        onPick();
+      });
+      return card;
+    }),
+  );
+}
+
 function renderModal(): void {
   const root = $("#modal-root");
   const m = state.modal;
@@ -2055,6 +2119,11 @@ function renderModal(): void {
         return null;
       };
       break;
+    case "theme":
+      title = t("theme_pick_title");
+      text = [h("p", { class: "modal-text" }, t("theme_pick_text")), themeChoices(() => renderModal())];
+      confirmLabel = t("theme_pick_done");
+      break;
     case "remove_server":
       title = t("remove_server_title", { name: m.name });
       text = [h("p", { class: "modal-text" }, t("remove_server_text", { name: m.name }))];
@@ -2066,6 +2135,7 @@ function renderModal(): void {
       break;
   }
   const cancel = button(m.kind === "invite" ? t("link_cancel") : t("cancel"), () => closeModal(), { fk: "modal-cancel" });
+  if (m.kind === "theme") cancel.hidden = true;
   const confirm = button(confirmLabel, () => {
     confirm.disabled = true;
     void onConfirm()
@@ -2495,6 +2565,7 @@ async function main(): Promise<void> {
   void api.setStatusPolling(!document.hidden);
   // The background scene is a few hundred SVG nodes: build it after the first paint of the page.
   window.requestAnimationFrame(() => window.setTimeout(buildScene, 0));
+  if (THEMES_ENABLED && storedTheme() === null) showModal({ kind: "theme" });
   await checkInviteLink();
 }
 

@@ -169,6 +169,7 @@ export interface Settings {
   gameLanguage: GameLanguage;
   showConsole: boolean; // the DLL's log window, normally hidden (DR_SHOW_CONSOLE=1)
   streamerMode?: boolean; // hide addresses, fingerprints, paths and player names on screen
+  discordPresence?: boolean; // show what the player is doing in the Discord app on this PC (default on)
 }
 
 export interface Snapshot {

@@ -1,0 +1,204 @@
+/* Unreleased: only applies when the page runs with a theme chosen, and the theme choice is off in
+   released launchers (THEMES_ENABLED in index.ts). Calm look: flat surfaces, one hairline border, rounded corners and a single accent colour. It sits on
+   top of dauntless-style.css (same scope, loaded after it) and replaces its bevelled steel frames, torn
+   paint, engraved lines and angled gold plate. Taking this file's link out of index.html brings the
+   bevelled look back. */
+
+:root[data-theme="calm"] {
+  --calm-bg: #08121d;
+  --calm-surface: #0e1f31;
+  --calm-raised: #14304a;
+  --calm-line: rgb(255 255 255 / 0.08);
+  --calm-accent: #5cc8e8;
+  --calm-radius: 12px;
+}
+
+/* ---- frame */
+:root[data-theme="calm"] .titlebar {
+  background: var(--calm-bg);
+  box-shadow: none;
+  border-bottom: 1px solid var(--calm-line);
+}
+:root[data-theme="calm"] .titlebar::before,
+:root[data-theme="calm"] .titlebar::after {
+  display: none;
+}
+:root[data-theme="calm"] .rail {
+  background: var(--calm-bg);
+  box-shadow: none;
+  border-right: 1px solid var(--calm-line);
+}
+:root[data-theme="calm"] .actionbar {
+  background: color-mix(in srgb, var(--calm-bg) 92%, transparent);
+  box-shadow: none;
+  border-top: 1px solid var(--calm-line);
+}
+
+/* ---- navigation: soft rows, the current page marked by a tinted pill and an accent bar */
+:root[data-theme="calm"] .nav {
+  gap: 2px;
+}
+:root[data-theme="calm"] .nav-item {
+  margin-left: 0;
+  width: 100%;
+  height: 40px;
+  padding-left: 12px;
+  border-radius: 8px;
+  background: transparent;
+  text-shadow: none;
+  color: #b9c6d3;
+  font-weight: 600;
+}
+:root[data-theme="calm"] .nav-item:hover {
+  background: rgb(255 255 255 / 0.05);
+  color: #fff;
+}
+:root[data-theme="calm"] .nav-item[aria-current="page"] {
+  margin-left: 0;
+  width: 100%;
+  padding-left: 12px;
+  background: color-mix(in srgb, var(--calm-accent) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--calm-accent);
+  color: #fff;
+  filter: none;
+}
+:root[data-theme="calm"] .nav-item .icon,
+:root[data-theme="calm"] .nav-item[aria-current="page"] .icon {
+  width: 20px;
+  height: 20px;
+  filter: none;
+  color: #8fa3b5;
+}
+:root[data-theme="calm"] .nav-item[aria-current="page"] .icon {
+  color: var(--calm-accent);
+}
+
+/* ---- surfaces */
+:root[data-theme="calm"] .card,
+:root[data-theme="calm"] .account-chip,
+:root[data-theme="calm"] .partner-mini,
+:root[data-theme="calm"] .settings-panel > .card,
+:root[data-theme="calm"] .instance {
+  border: 1px solid var(--calm-line);
+  border-radius: var(--calm-radius);
+  background: var(--calm-surface);
+  box-shadow: none;
+}
+:root[data-theme="calm"] .partner-mini:hover:not(:disabled),
+:root[data-theme="calm"] .account-switch:hover:not(:disabled) {
+  background: var(--calm-raised);
+}
+:root[data-theme="calm"] .badge {
+  border: 0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.07);
+}
+:root[data-theme="calm"] .server-panel {
+  background: color-mix(in srgb, var(--calm-bg) 82%, transparent);
+  border-left: 1px solid var(--calm-line);
+  box-shadow: none;
+}
+
+/* ---- buttons */
+:root[data-theme="calm"] .btn {
+  border: 1px solid var(--calm-line);
+  border-radius: 9px;
+  background: var(--calm-raised);
+  box-shadow: none;
+}
+:root[data-theme="calm"] .btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--calm-raised) 70%, var(--calm-accent));
+}
+:root[data-theme="calm"] .btn-primary {
+  border-color: transparent;
+  background: var(--calm-accent);
+  color: #04202b;
+  box-shadow: none;
+}
+
+/* ---- PLAY: one flat gold pill instead of the angled bevelled plate */
+:root[data-theme="calm"] .big-button {
+  clip-path: none;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f6cf62, #e3a92c);
+  color: #2e1e03;
+  text-shadow: none;
+  letter-spacing: 0.1em;
+  filter: none;
+  box-shadow: 0 6px 20px rgb(226 180 64 / 0.22);
+}
+:root[data-theme="calm"] .big-button::before {
+  display: none;
+}
+:root[data-theme="calm"] .big-button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffdc78, #eeb637);
+  filter: none;
+  box-shadow: 0 8px 26px rgb(255 205 90 / 0.35);
+}
+:root[data-theme="calm"] .big-button:active:not(:disabled) {
+  background: #d49a22;
+}
+:root[data-theme="calm"] .big-button:disabled {
+  background: #1d2c3b;
+  color: #7d8fa0;
+  box-shadow: none;
+}
+:root[data-theme="calm"] .big-button.is-running,
+:root[data-theme="calm"] .big-button.is-running:disabled,
+:root[data-theme="calm"] .big-button.is-pause {
+  background: var(--calm-raised);
+  color: #fff;
+}
+
+/* ---- steps and settings tabs */
+:root[data-theme="calm"] .step-dot {
+  border: 1px solid var(--calm-line);
+  background: var(--calm-raised);
+  box-shadow: none;
+}
+:root[data-theme="calm"] .step.current .step-dot {
+  background: var(--calm-accent);
+  border-color: transparent;
+  color: #04202b;
+  box-shadow: none;
+}
+:root[data-theme="calm"] .step.done .step-dot {
+  border-color: transparent;
+  color: var(--calm-accent);
+}
+:root[data-theme="calm"] .settings-tabs {
+  border-radius: 10px;
+  border: 1px solid var(--calm-line);
+  background: var(--calm-surface);
+  box-shadow: none;
+}
+:root[data-theme="calm"] .settings-tab[aria-selected="true"] {
+  border-radius: 8px;
+  background: var(--calm-raised);
+  box-shadow: inset 0 -2px 0 var(--calm-accent);
+}
+
+/* ---- dialogs and menus */
+:root[data-theme="calm"] .modal,
+:root[data-theme="calm"] .dropdown-list,
+:root[data-theme="calm"] .server-menu,
+:root[data-theme="calm"] .play-menu {
+  border: 1px solid var(--calm-line);
+  border-radius: var(--calm-radius);
+  background: var(--calm-surface);
+}
+:root[data-theme="calm"] .modal::before,
+:root[data-theme="calm"] .modal::after {
+  display: none;
+}
+
+/* The theme picker's previews: each theme's own colours, whichever theme is on. */
+.swatch-classic { background: #0c2b48; }
+.swatch-classic i:first-child { background: #1d4f78; }
+.swatch-classic i:last-child { background: #e2b440; }
+.swatch-calm { background: #08121d; }
+.swatch-calm i:first-child { background: #0e1f31; }
+.swatch-calm i:last-child { background: #5cc8e8; }
+.swatch-horizon { background: #14110f; }
+.swatch-horizon i:first-child { background: #2a211a; }
+.swatch-horizon i:last-child { background: #ff8a3d; }

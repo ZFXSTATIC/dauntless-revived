@@ -39,6 +39,10 @@ export const VC_RUNTIME_FILES = ["MSVCP140.dll", "VCRUNTIME140_1.dll"];
 // Chat and presence (XMPP): pointed at the host instead of Epic, like friend-kit/play.ps1.
 export const XMPP_PORT = 61099;
 
+// Discord Rich Presence needs an application id from discord.com/developers (Applications). Empty means
+// presence is off; DR_DISCORD_CLIENT_ID overrides it for testing.
+export const DISCORD_CLIENT_ID = "";
+
 export const CONNECT_TIMEOUT_MS = 5000;
 export const STATUS_POLL_MS = 15000;
 export const DISK_MARGIN_BYTES = 1024 * 1024 * 1024; // 1 GiB on top of what is still to download

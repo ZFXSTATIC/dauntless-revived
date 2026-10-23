@@ -15,6 +15,7 @@ export function settingsPatch(v: unknown): Partial<Settings> | null {
     else if (k === "exposure" && EXPOSURE_MODES.includes(val as ExposureMode)) out.exposure = val as ExposureMode;
     else if (k === "windowed" && typeof val === "boolean") out.windowed = val;
     else if (k === "streamerMode" && typeof val === "boolean") out.streamerMode = val;
+    else if (k === "discordPresence" && typeof val === "boolean") out.discordPresence = val;
     else if (k === "showConsole" && typeof val === "boolean") out.showConsole = val;
     else if (k === "huntRegion" && (val === 'auto' || val === 'main' || val === 'ger' || val === 'us')) out.huntRegion = val;
     else if (k === "language" && LANGUAGES.includes(val as Language)) out.language = val as Language;
