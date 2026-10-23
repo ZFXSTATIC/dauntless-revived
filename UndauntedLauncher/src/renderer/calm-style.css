@@ -799,10 +799,15 @@
 :root[data-theme="classic"] .partner-mini,
 :root[data-theme="classic"] .partner-banner,
 :root[data-theme="classic"] .instance {
-  background:
-    linear-gradient(var(--cg), var(--cg)) padding-box,
-    linear-gradient(180deg, var(--dl-silver-hi), var(--dl-silver-mid) 30%, var(--dl-silver-lo) 70%, var(--dl-silver-mid)) border-box;
-  box-shadow: none;
+  /* The old frame was a gradient painted under the whole box, which showed through a clear fill as grey:
+     a plain silver border with a thin highlight instead. */
+  background: var(--cg);
+  border: 2px solid var(--dl-silver-mid);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.55), inset 0 1px 0 var(--dl-silver-hi);
+}
+:root[data-theme="classic"] .partner-mini:hover:not(:disabled),
+:root[data-theme="classic"] .partner-banner:hover:not(:disabled) {
+  background: rgb(23 64 95 / 0.3);
 }
 :root[data-theme="classic"] .settings-panel > .card {
   background: none;
