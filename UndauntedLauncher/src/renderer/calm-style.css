@@ -86,7 +86,7 @@
   background: rgb(255 255 255 / 0.07);
 }
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-panel {
-  background: color-mix(in srgb, var(--calm-bg) 55%, transparent);
+  background: color-mix(in srgb, var(--calm-bg) 40%, transparent);
   border-left: 1px solid var(--calm-line);
   box-shadow: none;
 }
@@ -768,7 +768,7 @@
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel,
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel > .card,
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .instance {
-  background: color-mix(in srgb, var(--calm-surface) 30%, transparent);
+  background: color-mix(in srgb, var(--calm-surface) 20%, transparent);
 }
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .settings-panel > .card {
   background: none;
@@ -780,25 +780,53 @@
   backdrop-filter: blur(3px);
 }
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .server-panel {
-  background: color-mix(in srgb, var(--calm-bg) 28%, transparent);
+  background: color-mix(in srgb, var(--calm-bg) 18%, transparent);
 }
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .actionbar {
-  background: color-mix(in srgb, var(--calm-bg) 42%, transparent);
+  background: color-mix(in srgb, var(--calm-bg) 30%, transparent);
 }
 :root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .rail {
-  background: color-mix(in srgb, var(--calm-bg) 55%, transparent);
+  background: color-mix(in srgb, var(--calm-bg) 40%, transparent);
 }
 :root[data-theme="classic"] {
-  --dl-panel: color-mix(in srgb, #071f36 32%, transparent);
+  --dl-panel: rgb(4 18 32 / 0.14);
+  --cg: rgb(4 18 32 / 0.14);
+}
+/* The steel-framed boxes keep their silver frame; only the fill behind them goes nearly clear. */
+:root[data-theme="classic"] .card,
+:root[data-theme="classic"] .settings-panel,
+:root[data-theme="classic"] .account-chip,
+:root[data-theme="classic"] .partner-mini,
+:root[data-theme="classic"] .partner-banner,
+:root[data-theme="classic"] .instance {
+  background:
+    linear-gradient(var(--cg), var(--cg)) padding-box,
+    linear-gradient(180deg, var(--dl-silver-hi), var(--dl-silver-mid) 30%, var(--dl-silver-lo) 70%, var(--dl-silver-mid)) border-box;
+  box-shadow: none;
+}
+:root[data-theme="classic"] .settings-panel > .card {
+  background: none;
+}
+:root[data-theme="classic"] .rail {
+  background: rgb(5 22 40 / 0.2);
+}
+:root[data-theme="classic"] .actionbar {
+  background: rgb(5 13 23 / 0.28);
+}
+:root[data-theme="classic"] .titlebar {
+  background: rgb(6 26 46 / 0.5);
+}
+:root[data-theme="classic"] .server-panel {
+  background: rgb(3 14 25 / 0.14);
 }
 :root[data-theme="classic"] .card,
 :root[data-theme="classic"] .settings-panel,
 :root[data-theme="classic"] .server-panel {
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
 }
 :root[data-theme="classic"] .hero-shade {
-  opacity: 0.35;
+  opacity: 0.2;
 }
 
 /* The theme picker's previews: each theme's own colours, whichever theme is on. */
