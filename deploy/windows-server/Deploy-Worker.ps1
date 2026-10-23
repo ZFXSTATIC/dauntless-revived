@@ -39,8 +39,9 @@ if ($Rollback) {
 # Not named Git: PowerShell command names are case-insensitive, so a function Git would call itself.
 function Invoke-Git { & git.exe @args; if ($LASTEXITCODE -ne 0) { throw "git $($args -join ' ') failed" } }
 if (Test-Path "$Src\.git") { Invoke-Git -C $Src fetch --quiet --tags origin } else { Invoke-Git clone --quiet $Repo $Src }
-& git.exe -C $Src checkout --quiet --force $Ref 2>$null
-if ($LASTEXITCODE -ne 0) { Invoke-Git -C $Src checkout --quiet --force "origin/$Ref" }
+# a branch name must mean the branch just fetched (origin/<ref>), never an older local copy; tags and commits fall through
+& git.exe -C $Src checkout --quiet --force "origin/$Ref" 2>$null
+if ($LASTEXITCODE -ne 0) { Invoke-Git -C $Src checkout --quiet --force $Ref }
 $commit = (& git.exe -C $Src rev-parse --short HEAD)
 "building $Ref ($commit)"
 
