@@ -84,8 +84,11 @@ export class RegionalRouter {
             const workers = AusUrls(choice);
             if (!workers.length) throw new CapacityUnavailable('hunts');
             const hosts = WorkerHosts(choice);
+            // Only hunts move on to the next worker. Ramsgate and Training run on the first worker alone: an extra
+            // worker is usually hunts-only and answers any world with an error, which would fail the whole launch.
             // An ambiguous failure (timeout, reset) throws out of remote() and is never retried on another worker.
-            for (const worker of workers) {
+            const candidates = body.GameMode === 'ISLAND' ? workers : workers.slice(0, 1);
+            for (const worker of candidates) {
                 const connection = await this.remote(worker, body);
                 if (!connection) continue;
                 if (hosts.length && !hosts.includes(connection.host))

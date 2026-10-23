@@ -77,6 +77,19 @@ test('US tries the next worker only after a capacity refusal, and keeps the host
     assert.deepEqual(timeouts, ['61041'], 'an ambiguous failure is never retried on another worker');
 });
 
+test('Ramsgate and Training only use the first worker, hunts may use the next', async () => {
+    write({us: {urls: ['http://127.0.0.1:61041', 'http://127.0.0.1:61042'], hosts: ['na', 'canada']}});
+    for (const GameMode of ['CITY', 'SHARED']) {
+        const calls: string[] = [];
+        const router = new RegionalRouter(load, async url => { calls.push(url.port); return undefined; });
+        await assert.rejects(router.launch({...body, GameMode}, 'us', async () => { throw Error('no'); }), CapacityUnavailable);
+        assert.deepEqual(calls, ['61041'], GameMode + ' must not be sent to the second worker');
+    }
+    const hunts: string[] = [];
+    await assert.rejects(new RegionalRouter(load, async url => { hunts.push(url.port); return undefined; }).launch(body, 'us', async () => { throw Error('no'); }), CapacityUnavailable);
+    assert.deepEqual(hunts, ['61041', '61042']);
+});
+
 test('Germany follows the host in the workers file, not the old one', async () => {
     write({ger: {urls: ['http://127.0.0.1:61051'], hosts: ['london']}});
     assert.deepEqual(await new RegionalRouter(load, async () => ({host: 'london', port: 8702})).launch(body, 'ger', async () => { throw Error('no'); }), {host: 'london', port: 8702});
