@@ -28,8 +28,8 @@ export const LABELS={Players:'Players Online',Hunts:'Hunts Running'};
 export class GameStats {
   constructor(client,counters,ports) {Object.assign(this,{client,counters,ports});}
   async refresh(guild) {
-    const cfg=this.counters.state.guilds[guild.id]; if(!cfg) return;
-    const stats=await fetchStats(this.ports); if(!stats) return;
+    const cfg=this.counters.state.guilds[guild.id]; if(!cfg) {console.log(`game stats: guild ${guild.id} has no counter category`);return;}
+    const stats=await fetchStats(this.ports); if(!stats) {console.log('game stats: no deploy server answered');return;}
     const category=await guild.channels.fetch(cfg.categoryId);
     await this.counters.validate(guild,category);
     const channels=await guild.channels.fetch();
@@ -45,10 +45,11 @@ export class GameStats {
       if(cfg.stats[key]!==channel.id) {cfg.stats[key]=channel.id;await this.counters.save(this.counters.state);}
       if(channel.name!==name) await channel.setName(name);
     }
+    console.log(`game stats updated: ${JSON.stringify(stats)}`);
   }
   start(intervalMs=360000) {
-    const run=()=>{for(const guild of this.client.guilds.cache.values())
-      this.counters.serialize(()=>this.refresh(guild)).catch(()=>console.error('Game stats refresh failed; will retry'));};
+    const run=()=>{console.log(`game stats tick: ${this.client.guilds.cache.size} guild(s)`);for(const guild of this.client.guilds.cache.values())
+      this.counters.serialize(()=>this.refresh(guild)).catch(e=>console.error(`Game stats refresh failed: ${e.message}`));};
     setTimeout(run,5000).unref();
     setInterval(run,intervalMs).unref();
   }
