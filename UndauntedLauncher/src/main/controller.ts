@@ -285,8 +285,8 @@ export class Controller {
       await this.settings.update((s) => { s.server = this.p.defaultServer!; });
     }
     if (this.p.offlineSave) await this.withBusy(() => this.p.offlineSave!.recover());
-    await this.refreshKeyFlag();
-    await this.inspectInstall();
+    // The key store and the install folder are independent: look at both at once.
+    await Promise.all([this.refreshKeyFlag(), this.inspectInstall()]);
     this.publish();
     if (this.s.server) void this.connect();
   }
