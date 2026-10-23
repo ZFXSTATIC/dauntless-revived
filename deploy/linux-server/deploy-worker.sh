@@ -52,7 +52,8 @@ if [ "$force" -eq 0 ] && [ "$(running || true)" != "0" ] && [ -n "$(running || t
 fi
 
 if [ -d "$src/.git" ]; then git -C "$src" fetch --quiet --tags origin; else git clone --quiet "$repo" "$src"; fi
-git -C "$src" checkout --quiet --force "$ref" 2>/dev/null || git -C "$src" checkout --quiet --force "origin/$ref"
+# a branch name must mean the branch just fetched (origin/<ref>), never an older local copy of it; tags and commits fall through
+git -C "$src" checkout --quiet --force "origin/$ref" 2>/dev/null || git -C "$src" checkout --quiet --force "$ref"
 commit=$(git -C "$src" rev-parse --short HEAD)
 echo "building $ref ($commit)"
 
