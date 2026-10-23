@@ -176,8 +176,19 @@ function registerProtocolClient(): void {
 
 // ------------------------------------------------------------------ window
 
+// The window and taskbar icon: the dragon for a light or a dark taskbar, by the system's own theme
+// (the launcher's pages are always dark). Falls back to the plain icon.
+function windowIconPath(): string | undefined {
+  const dir = resourcesDir();
+  for (const name of [nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? "icon-dark.png" : "icon-light.png", "icon.png"]) {
+    const file = path.join(dir, name);
+    if (existsSync(file)) return file;
+  }
+  return undefined;
+}
+
 function createWindow(): void {
-  const iconPath = path.join(resourcesDir(), "icon.png");
+  const iconPath = windowIconPath();
   // Never larger than the primary screen's usable area (the part the taskbar does not cover):
   // 1366x768 laptops, or 1920x1080 at 150 % scaling, have less than 760 px of height, and the big
   // button at the bottom must stay on screen.
@@ -192,9 +203,11 @@ function createWindow(): void {
     // The page's ink (styles.css), so nothing flashes before it paints.
     backgroundColor: "#01090D",
     title: "Dauntless Revived Launcher",
-    icon: existsSync(iconPath) ? iconPath : undefined,
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      // DR_THEMES=1 turns on the unreleased themes (see src/renderer/index.ts).
+      additionalArguments: process.env.DR_THEMES === "1" ? ["--dr-themes"] : [],
       contextIsolation: true,
       nodeIntegration: false,
       nodeIntegrationInWorker: false,
@@ -211,6 +224,10 @@ function createWindow(): void {
     },
   });
   mainWindow.removeMenu();
+  nativeTheme.on("updated", () => {
+    const next = windowIconPath();
+    if (next && mainWindow && !mainWindow.isDestroyed()) mainWindow.setIcon(next);
+  });
   mainWindow.once("ready-to-show", () => mainWindow?.show());
   const window = mainWindow;
   const showTimer = setTimeout(() => { if (!window.isDestroyed()) window.show(); }, 10000);

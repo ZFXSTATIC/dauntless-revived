@@ -33,8 +33,8 @@ const api = window.launcher;
 // The look of the page. A page preference, kept next to the page (not in the launcher's settings file);
 // no stored choice means the first launch, which asks once.
 // Themes are not released yet: until THEMES_ENABLED is switched on, the launcher always uses Classic and
-// shows no theme choice. (A dev server page opened with ?themes can preview them.)
-const THEMES_ENABLED = new URLSearchParams(window.location.search).has("themes");
+// shows no theme choice. (A dev server page opened with ?themes, or a launcher started with DR_THEMES=1, shows them.)
+const THEMES_ENABLED = new URLSearchParams(window.location.search).has("themes") || api.themesPreview === true;
 const THEMES = ["classic", "jade", "horizon", "dusk"] as const;
 type Theme = (typeof THEMES)[number];
 const THEME_NAMES: Record<Theme, string> = { classic: "Classic", jade: "Jade", horizon: "Horizon", dusk: "Dusk" };
