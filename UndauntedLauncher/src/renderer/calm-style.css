@@ -834,6 +834,21 @@
   opacity: 0.2;
 }
 
+/* The Mods page's cards were a solid colour of their own */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .mod-card {
+  background: color-mix(in srgb, var(--calm-surface) 20%, transparent);
+  border-color: var(--calm-line);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .mod-card:hover {
+  background: color-mix(in srgb, var(--calm-raised) 35%, transparent);
+}
+:root[data-theme="classic"] .mod-card {
+  background: rgb(4 18 32 / 0.14);
+}
+:root[data-theme="classic"] .mod-card:hover {
+  background: rgb(23 64 95 / 0.3);
+}
+
 /* The theme picker's previews: each theme's own colours, whichever theme is on. */
 .swatch-classic { background: #0c2b48; }
 .swatch-classic i:first-child { background: #1d4f78; }

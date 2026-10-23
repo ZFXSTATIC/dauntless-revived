@@ -1250,7 +1250,7 @@ async function loadMods(): Promise<void> {
 }
 
 function modSwitch(m: { id: string; name: StringKey }, on: boolean, locked: boolean): HTMLElement {
-  const sw = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": on ? "true" : "false", "aria-label": t(m.name), "data-fk": `mod-${m.id}`, disabled: locked });
+  const sw = h("button", { type: "button", class: "mod-toggle", role: "switch", "aria-checked": on ? "true" : "false", "aria-label": t(m.name), "data-fk": `mod-${m.id}`, disabled: locked });
   onToggle(sw, (next) => {
     void api.setMod(m.id, next).then(() => loadMods());
   });
