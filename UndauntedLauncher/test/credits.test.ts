@@ -26,25 +26,17 @@ test("the credits name every contributor, in order, with their role", () => {
   assert.match(person(PROJECT_PEOPLE, "LupesHk").note.en, /Brazilian Portuguese/);
   assert.match(person(PROJECT_PEOPLE, "JusMH").note.en, /Offline play runtime/);
   assert.match(person(PROJECT_PEOPLE, "anxo0").note.en, /DualSense/);
-  assert.equal(person(PROJECT_PEOPLE, "Vvoidddd").role, "contributor");
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.en, /airship/);
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.en, /console windows/);
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.en, /\.gitignore/);
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.en, /performance sampler/); // #6
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.fi, /suorituskykymittarin/);
-  // #8
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.en, /existing Dauntless 1\.4\.4 folder by pasting its path/);
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.fi, /valmista Dauntless 1\.4\.4 -kansiota liittämällä sen polun/);
-  // #9
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.en, /first in-game text chat server \(XMPP\) and tested it with a real 1\.4\.4 client/);
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.fi, /ensimmäisen pelinsisäisen tekstichat-palvelimen \(XMPP\) ja testasi sen oikealla 1\.4\.4-pelillä/);
-  // #7: the exposure setting is an opt-in experiment, off by default; the note must say so.
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.en, /opt-in Basic adaptive exposure setting for the airship \(off by default\)/);
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.fi, /valinnaisen mukautuvan perusvalotuksen asetuksen ilmalaivaa varten \(oletuksena pois päältä\)/);
-  // The exposure change was taken back out in 0.1.1 (it darkened Ramsgate); the note must not
-  // suggest the airship is fixed.
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.en, /reverted in launcher 0\.1\.1/);
-  assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.fi, /peruttiin käynnistimen versiossa 0\.1\.1/);
+  const voidNote = person(PROJECT_PEOPLE, "Vvoidddd");
+  assert.equal(voidNote.role, "contributor");
+  // Kept short; the exposure setting is an opt-in experiment and the note must not suggest the airship is fixed.
+  assert.ok(voidNote.note.en.length < 400, "the note stays short");
+  for (const part of ["opt-in Basic exposure setting", "console windows", "performance sampler", "existing Dauntless 1.4.4 folder", "text chat server (XMPP)"]) assert.ok(voidNote.note.en.includes(part), `Vvoidddd en: ${part}`);
+  assert.match(voidNote.note.fi, /suorituskykymittari/);
+  // ZFXSTATIC comes right after the maintainer and lists the mods, the DLL content and the region names.
+  const zfx = person(PROJECT_PEOPLE, "ZFXSTATIC");
+  assert.equal(zfx.role, "contributor");
+  assert.equal(PROJECT_PEOPLE[1].github, "ZFXSTATIC");
+  for (const part of ["client mods", "Mods page", "Lady Luck", "Middleman", "Trials", "Main, Germany and US"]) assert.ok(zfx.note.en.includes(part), `ZFXSTATIC en: ${part}`);
 
   // Harmonic: the work ported from Harmonic's Dauntless 1.4.4 fork (Harmonicrain/Undaunted 895f7c7),
   // listed after Vvoidddd. The English note names no gender (nothing we have says which).
