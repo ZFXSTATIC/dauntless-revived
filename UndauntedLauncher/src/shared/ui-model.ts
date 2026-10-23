@@ -136,3 +136,12 @@ export function shortFile(p: string | null): string | null {
   const name = p.split("/").pop() ?? p;
   return name.length > 48 ? name.slice(0, 45) + "…" : name;
 }
+
+// How a world's player count is shown. A city can be several worlds under one name, so its count may be
+// higher than the one capacity the server reports (63 of 20): then only the count is shown, with a full bar,
+// instead of a number that cannot be right.
+export function instancePlayersView(players: number, maxPlayers: number): { showMax: boolean; percent: number } {
+  if (maxPlayers <= 0) return { showMax: false, percent: 0 };
+  if (players > maxPlayers) return { showMax: false, percent: 100 };
+  return { showMax: true, percent: (players / maxPlayers) * 100 };
+}

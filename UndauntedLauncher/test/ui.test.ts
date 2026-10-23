@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isStringKey, STRINGS, systemLanguage, translate } from "../src/shared/i18n";
-import { primaryButton, stepIndex } from "../src/shared/ui-model";
+import { primaryButton, stepIndex, instancePlayersView } from "../src/shared/ui-model";
 import { formatBytes, formatDate, formatDuration, formatRunningTime } from "../src/shared/format";
 import { validateManifest, manifestFingerprint } from "../src/main/manifest";
 import type { InviteError } from "../src/shared/invite";
@@ -217,4 +217,11 @@ test("Spanish uses a decimal comma and Spanish month names", () => {
   assert.equal(formatBytes(1_500_000, "es"), "1,50 MB");
   assert.equal(formatBytes(1_500_000, "en"), "1.50 MB");
   assert.equal(formatDate("2026-10-09T12:00:00Z", "es"), "9 oct 2026");
+});
+
+test("a world with more players than its reported capacity shows only the count", () => {
+  assert.deepEqual(instancePlayersView(3, 5), { showMax: true, percent: 60 });
+  assert.deepEqual(instancePlayersView(5, 5), { showMax: true, percent: 100 });
+  assert.deepEqual(instancePlayersView(63, 20), { showMax: false, percent: 100 });
+  assert.deepEqual(instancePlayersView(4, 0), { showMax: false, percent: 0 });
 });

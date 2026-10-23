@@ -10,7 +10,7 @@ import { isStringKey, translate, type StringKey } from "../shared/i18n";
 import { localized, PATRONS, PROJECT_PEOPLE, SOFTWARE, UPSTREAM_PEOPLE, type CreditPerson, type CreditRole } from "../shared/credits";
 import { parseInvite } from "../shared/invite";
 import { checkUsername, extractAccountKey } from "../shared/username";
-import { exposureKey, graphicsKey, primaryButton, shortFile, stepIndex, taskView, updateReason, whereKey } from "../shared/ui-model";
+import { exposureKey, graphicsKey, instancePlayersView, primaryButton, shortFile, stepIndex, taskView, updateReason, whereKey } from "../shared/ui-model";
 import { formatBytes, formatDate, formatDuration, formatRunningTime } from "../shared/format";
 import { sortInstances, type InstanceKind, type ServerStatus, type StatusInstance } from "../shared/status";
 import { EXPOSURE_MODES, GAME_LANGUAGES, GRAPHICS_PRESETS, LANGUAGES, type Branding, type ExposureMode, type ExternalTarget, type GameLanguage, type GraphicsPreset, type Language, type LauncherError, type NewsItem, type OfflinePhase, type OfflineStatus, type Snapshot, type TaskProgress } from "../shared/types";
@@ -1029,9 +1029,9 @@ function instanceTitle(i: StatusInstance): string {
 const KIND_ICON: Record<InstanceKind, IconName> = { city: "city", hunt: "hunt", dojo: "dojo", tutorial: "tutorial" };
 
 function instanceCard(i: StatusInstance): HTMLElement {
-  const pct = i.maxPlayers > 0 ? Math.min(100, (i.players / i.maxPlayers) * 100) : 0;
+  const view = instancePlayersView(i.players, i.maxPlayers);
   const fill = h("span", {});
-  fill.style.width = `${pct}%`;
+  fill.style.width = `${view.percent}%`;
   return h(
     "div",
     { class: `instance k-${i.kind}` },
@@ -1040,7 +1040,7 @@ function instanceCard(i: StatusInstance): HTMLElement {
     h(
       "div",
       { class: "instance-meta" },
-      h("span", {}, i.maxPlayers > 0 ? t("inst_players", { n: i.players, max: i.maxPlayers }) : t("inst_players_nomax", { n: i.players })),
+      h("span", {}, view.showMax ? t("inst_players", { n: i.players, max: i.maxPlayers }) : t("inst_players_nomax", { n: i.players })),
       h("span", {}, t("inst_running", { time: formatRunningTime(i.startedAt, Date.now(), state.lang) })),
     ),
     h("div", { class: "instance-bar", "aria-hidden": "true" }, fill),
