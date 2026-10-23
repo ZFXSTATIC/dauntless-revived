@@ -650,6 +650,109 @@
   border-color: transparent;
 }
 
+/* ---- PLAY's arrow and the last Classic colours */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-more {
+  right: 8px;
+  border-left: 1px solid color-mix(in srgb, var(--calm-play-ink) 35%, transparent);
+  box-shadow: none;
+  color: var(--calm-play-ink);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-more .icon,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-more:focus-visible .icon {
+  filter: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-more:hover:not(:disabled) {
+  color: var(--calm-play-ink);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-running ~ .play-more,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button.is-pause ~ .play-more,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .big-button:disabled ~ .play-more {
+  color: var(--dr-frost);
+  border-left-color: var(--calm-line);
+  box-shadow: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar-brand,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .titlebar-title {
+  color: var(--dr-frost);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .info-tip {
+  color: var(--calm-muted);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .info-tip:hover,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .info-tip:focus-visible {
+  color: var(--dr-frost);
+}
+
+/* ---- PLAY's menu and the dialogs' buttons: flat, in the theme's colours */
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu {
+  left: 0;
+  right: 0;
+  padding: 4px;
+  border: 1px solid var(--calm-line);
+  border-radius: var(--calm-radius);
+  background: var(--calm-surface);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.5);
+  filter: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu-item {
+  height: 40px;
+  padding: 0 16px;
+  clip-path: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dr-frost);
+  text-shadow: none;
+  letter-spacing: 0.1em;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu-item::before,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu-label::before,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu-label::after {
+  display: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu-item:hover,
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .play-menu-item:focus-visible {
+  color: var(--dr-frost);
+  background: color-mix(in srgb, var(--calm-accent) 16%, transparent);
+  filter: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal-actions .btn {
+  min-width: 140px;
+  min-height: 40px;
+  border: 1px solid var(--calm-line);
+  border-image: none;
+  border-radius: 9px;
+  padding: 0 16px;
+  background: var(--calm-raised);
+  color: var(--dr-frost);
+  font-size: 15px;
+  text-shadow: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal-actions .btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--calm-raised) 70%, var(--calm-accent));
+  filter: none;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal-actions .btn.btn-primary {
+  border-color: transparent;
+  background: var(--calm-accent);
+  color: var(--calm-on-accent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal-actions .btn:focus-visible {
+  outline: 2px solid var(--calm-accent);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal-actions .btn .icon {
+  color: currentColor;
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal-danger {
+  box-shadow: none;
+  border-color: var(--danger, #e5534b);
+}
+:root:is([data-theme="jade"], [data-theme="horizon"], [data-theme="dusk"]) .modal .fp-compare {
+  border: 1px solid var(--calm-line);
+  border-radius: 8px;
+  background: var(--calm-bg);
+  box-shadow: none;
+}
+
 /* The theme picker's previews: each theme's own colours, whichever theme is on. */
 .swatch-classic { background: #0c2b48; }
 .swatch-classic i:first-child { background: #1d4f78; }
