@@ -3,7 +3,8 @@ import {ChannelType, EmbedBuilder, Events, PermissionFlagsBits, Routes, SlashCom
 export const DEFAULT_PORTS=[61001,61041,61042,61051];
 export const BOX_NAMES={61001:'MAIN',61041:'North America',61042:'Canada',61051:'Germany (London)'};
 export const DEFAULT_ALERT_CHANNELS=['1560031651747201104','1553104469774962919'];
-export const ALERT_AFTER_POLLS=10, DOWN_AFTER_POLLS=3;
+export const ALERT_AFTER_POLLS=10, DOWN_AFTER_POLLS=3, RECOVER_AFTER_POLLS=5;
+export const ALERT_COOLDOWN_MS=60*60*1000, MAX_ALERTS_PER_HOUR=6;
 export const LABELS={Players:'Players',Hunts:'Hunts'};
 
 export function parsePorts(value) {
@@ -58,17 +59,43 @@ export function statusEmbed(infos) {
 }
 export const STATUS_COMMAND=new SlashCommandBuilder().setName('status').setDescription('Show how busy the Dauntless Revived servers are').toJSON();
 
-// Counts consecutive full / unreachable polls per box and says when to alert or recover.
+// What counts as critical. Being full is normal (it means the servers are being used), so the alerts are only for:
+//   down  - a deploy server stopped answering
+//   hot   - a server's CPU stayed at or above HOT_CPU_PERCENT (players get rubber-banding)
+//   full  - every server is full at once, so nobody can start a hunt
+export const HOT_CPU_PERCENT=95;
+export const FLEET_PORT=0;
+export function fleetInfo(infos) {
+  const up=infos.filter(b=>b.up);
+  return {port:FLEET_PORT,name:'All servers',up:true,running:up.reduce((n,b)=>n+b.running,0),limit:up.reduce((n,b)=>n+b.limit,0),
+    players:up.reduce((n,b)=>n+b.players,0),cpu:null,blocked:false,allFull:up.length>0 && up.every(isFull)};
+}
+export function badKind(b) {
+  if(b.port===FLEET_PORT) return b.allFull?'full':null;
+  if(!b.up) return 'down';
+  return b.cpu!=null && b.cpu>=HOT_CPU_PERCENT ? 'hot' : null;
+}
+// Alerts are rate limited: a source alerts at most once per ALERT_COOLDOWN_MS, must look normal for
+// RECOVER_AFTER_POLLS polls before it counts as recovered, and at most MAX_ALERTS_PER_HOUR messages go out in total.
 export class AlertTracker {
-  constructor() {this.state=new Map();}
-  update(infos) {
+  constructor() {this.state=new Map();this.sent=[];}
+  update(infos,now=Date.now()) {
     const events=[];
-    for(const b of infos) {
-      const st=this.state.get(b.port)||{full:0,down:0,alerted:null};
-      st.full=isFull(b)?st.full+1:0; st.down=b.up?0:st.down+1;
-      const kind=st.down>=DOWN_AFTER_POLLS?'down':st.full>=ALERT_AFTER_POLLS?'full':null;
-      if(kind && st.alerted!==kind) {events.push({type:'alert',kind,box:b});st.alerted=kind;}
-      else if(!kind && st.alerted && st.down===0 && st.full===0) {events.push({type:'recovered',kind:st.alerted,box:b});st.alerted=null;}
+    this.sent=this.sent.filter(t=>now-t<3600000);
+    for(const b of [...infos,fleetInfo(infos)]) {
+      const st=this.state.get(b.port)||{bad:0,ok:0,kind:null,alerted:null,lastAlert:0};
+      const kind=badKind(b);
+      if(kind && kind===st.kind) st.bad++; else st.bad=kind?1:0;
+      st.kind=kind; st.ok=kind?0:st.ok+1;
+      const need=kind==='down'?DOWN_AFTER_POLLS:ALERT_AFTER_POLLS;
+      if(kind && st.alerted!==kind && st.bad>=need) {
+        if(now-st.lastAlert>=ALERT_COOLDOWN_MS && this.sent.length<MAX_ALERTS_PER_HOUR) {
+          events.push({type:'alert',kind,box:b});st.alerted=kind;st.lastAlert=now;this.sent.push(now);
+        }
+      } else if(!kind && st.alerted && st.ok>=RECOVER_AFTER_POLLS) {
+        if(this.sent.length<MAX_ALERTS_PER_HOUR) {events.push({type:'recovered',kind:st.alerted,box:b});this.sent.push(now);}
+        st.alerted=null;
+      }
       this.state.set(b.port,st);
     }
     return events;
@@ -77,12 +104,14 @@ export class AlertTracker {
 export function alertEmbed(ev,infos) {
   const b=ev.box, cpu=b.cpu==null?'n/a':`${Math.round(b.cpu)}%`;
   if(ev.type==='recovered') return new EmbedBuilder().setColor(0x4cc38a).setTitle(`✅ ${b.name} is back to normal`)
-    .setDescription(`${b.running}/${b.limit} hunts, CPU ${cpu}`).setTimestamp();
+    .setDescription(`${b.running}/${b.limit} hunts${b.cpu==null?'':`, CPU ${cpu}`}`).setTimestamp();
   const text=ev.kind==='down' ? 'The deploy server is not answering.'
-    : `Full for ${ALERT_AFTER_POLLS}+ minutes: ${b.running}/${b.limit} hunts, CPU ${cpu}${b.blocked?' (the CPU guard is holding new hunts back)':''}.`;
+    : ev.kind==='hot' ? `CPU has been at ${cpu} for ${ALERT_AFTER_POLLS}+ minutes (${b.running}/${b.limit} hunts). Players may see rubber-banding.`
+    : `Every server has been full for ${ALERT_AFTER_POLLS}+ minutes (${b.running}/${b.limit} hunts), so new hunts are queueing.`;
   const others=infos.filter(x=>x.port!==b.port).map(x=>`${x.name}: ${!x.up?'down':x.running+'/'+x.limit}`).join(', ');
-  return new EmbedBuilder().setColor(0xe5484d).setTitle(`🚨 ${b.name} is ${ev.kind==='down'?'down':'overloaded'}`)
-    .setDescription(`${text}\nOther servers: ${others}`).setTimestamp();
+  const title=ev.kind==='down'?`${b.name} is down`:ev.kind==='hot'?`${b.name} is overloaded`:'All servers are full';
+  return new EmbedBuilder().setColor(0xe5484d).setTitle(`🚨 ${title}`)
+    .setDescription(ev.kind==='full'?text:`${text}\nOther servers: ${others}`).setTimestamp();
 }
 
 export class GameStats {
