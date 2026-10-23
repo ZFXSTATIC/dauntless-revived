@@ -456,10 +456,10 @@
   display: none;
 }
 :root[data-theme="horizon"] .hero {
-  background: var(--calm-bg) url("./brand/theme-ember.webp") center / cover no-repeat;
+  background: var(--calm-bg) url("./brand/theme-ember.webp") 75% 45% / cover no-repeat;
 }
 :root[data-theme="dusk"] .hero {
-  background: var(--calm-bg) url("./brand/theme-dusk.webp") center / cover no-repeat;
+  background: var(--calm-bg) url("./brand/theme-dusk.webp") 75% 45% / cover no-repeat;
 }
 :root:is([data-theme="horizon"], [data-theme="dusk"]) .hero-shade {
   background: linear-gradient(90deg, color-mix(in srgb, var(--calm-bg) 92%, transparent) 0%, color-mix(in srgb, var(--calm-bg) 70%, transparent) 45%, color-mix(in srgb, var(--calm-bg) 40%, transparent) 100%);
