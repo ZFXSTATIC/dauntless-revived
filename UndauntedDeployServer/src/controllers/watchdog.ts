@@ -1,6 +1,6 @@
 import { logger } from "../logger";
 import { Gameservers, CleanupServer, IsGameserverAlive, StopExpiredHunt } from "./gameservers";
-import { NativeReportedOccupancy } from './nativeoccupancy';
+import { NativeReportedOccupancy, PruneStaleNativeLogs } from './nativeoccupancy';
 import { HuntLifetimeFromEnv } from './huntlifetime';
 const Lifetime=HuntLifetimeFromEnv();
 
@@ -16,6 +16,7 @@ export async function RunWatchdog(){
     const cleanup: Promise<unknown>[] = [];
     try {
     logger.info(`Running Gameserver Watchdog!`);
+    PruneStaleNativeLogs();
     Lifetime.prune(new Set(Gameservers.map(server=>server.id)));
 
     for(const Gameserver of Gameservers){

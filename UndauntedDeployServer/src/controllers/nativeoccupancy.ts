@@ -1,4 +1,4 @@
-import {openSync,closeSync,fstatSync,readSync,readdirSync,statSync} from 'node:fs';
+import {openSync,closeSync,fstatSync,readSync,readdirSync,statSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 
 export function ParseNativeOccupancy(text:string):number|undefined {
@@ -56,6 +56,26 @@ export function GameProcessId(pid:number, startedAt:Date):number|undefined {
     const stale = Date.now()-24*3600000;
     for (const [p,s] of Registered) if (s < stale) { Registered.delete(p); WinePids.delete(p); }
     return WinePids.get(pid);
+}
+
+// Under Wine a process id is reused, and the game then writes into the old count file, which keeps its old
+// creation time, so the matching above cannot find it and the game reports no count. A count file that has
+// not been written for this long belongs to a game that is gone (a live one rewrites it every few seconds and is
+// unreadable after 90 s anyway), so removing it makes the next game with that id start a fresh file.
+export function PruneStaleNativeLogs(maxAgeMs=10*60000, now=Date.now()):number {
+    const dir = ReadyDir();
+    if (process.platform !== 'linux' || !dir) return 0;
+    let removed = 0;
+    try {
+        for (const name of readdirSync(dir)) {
+            if (!/^native-fault-\d+\.log$/.test(name)) continue;
+            try {
+                const file = path.join(dir, name);
+                if (now - statSync(file).mtimeMs > maxAgeMs) { unlinkSync(file); removed++; }
+            } catch {}
+        }
+    } catch {}
+    return removed;
 }
 
 function ReadOccupancy(id:number, startedAt:Date):number|undefined {
