@@ -18,7 +18,7 @@ import { missingDirectX, gameExitDetail } from './windows-runtime';
 import { hasOfflineMemory, OFFLINE_REQUIRED_AVAILABLE_MIB } from "./offline-memory";
 import { OFFLINE_KEY_SLOT, type OfflineSaveRuntime } from "./offline-save";
 
-import { parseInvite, isLoopbackHost, type Invite } from "../shared/invite";
+import { extractInviteCode, findInviteLink, parseInvite, isLoopbackHost, type Invite } from "../shared/invite";
 import { checkUsername, extractAccountKey } from "../shared/username";
 import { limitedView, type ServerStatus } from "../shared/status";
 import { saveHuntRegion, endPlaying } from './hostapi';
@@ -420,7 +420,7 @@ export class Controller {
   // Public invites: is there a key for this host:port that belongs to another certificate? The
   // page asks before it offers to join, so that it can warn instead of offering a one-click join.
   async checkInvite(text: unknown): Promise<InviteCheck> {
-    const parsed = parseInvite(text);
+    const parsed = parseInvite(findInviteLink(text) ?? text);
     if (!parsed.ok) return err("invite_invalid_format", parsed.error);
     const change = await this.certificateChange(parsed.invite);
     return { ok: true, certificateChanged: change !== null, previousFingerprint: change?.fp ?? null };
@@ -438,7 +438,7 @@ export class Controller {
   async submitInvite(text: unknown, opts: { acceptNewCertificate?: boolean } = {}): Promise<ActionResult> {
     if (this.busy || this.task) return err("busy");
     if (this.game.running) return this.fail("already_running");
-    const parsed = parseInvite(text);
+    const parsed = parseInvite(findInviteLink(text) ?? text);
     if (!parsed.ok) return this.fail("invite_invalid_format", parsed.error);
     return this.join(parsed.invite, opts);
   }
@@ -475,7 +475,6 @@ export class Controller {
     const current = this.s.server;
     const same =
       current !== null && current.mode === inv.mode && current.host === inv.host && current.port === inv.port && current.fp === inv.fp;
-    const hasKeyForIt = await this.keys.has({ host: inv.host, port: inv.port, mode: inv.mode, fp: inv.fp });
     await this.settings.update((s) => {
       s.server = {
         mode: inv.mode,
@@ -484,8 +483,10 @@ export class Controller {
         name: inv.name,
         share: inv.share,
         fp: inv.fp,
-        // A friend who already has an account on this server does not need the code again.
-        code: hasKeyForIt ? null : inv.code,
+        // Kept even when this PC holds a key for the server: that key may turn out to be refused,
+        // and the player then registers again and needs the code. It is cleared by a registration
+        // or by signing in with a key.
+        code: inv.code,
       };
     });
     if (!same) this.resetServerState();
@@ -810,6 +811,23 @@ export class Controller {
       await this.pollStatus();
       return { ok: true as const, username: username as string };
     });
+  }
+
+  // The Register page's invite box and the "account key" box both end up here, so an invite can
+  // never get lost: a link joins as usual, a bare code is stored for the server already chosen.
+  async setInviteCode(text: unknown): Promise<ActionResult> {
+    if (this.busy || this.task) return err("busy");
+    if (findInviteLink(text) !== null) return this.submitInvite(text);
+    const code = extractInviteCode(text);
+    if (code === null) return this.fail("invite_invalid_format", "code");
+    if (!this.s.server) return err("server_unreachable");
+    await this.settings.update((s) => {
+      if (s.server) s.server.code = code;
+    });
+    this.lastError = null;
+    log.info("an invite code was entered for the current server");
+    this.publish();
+    return OK;
   }
 
   async useExistingKey(text: unknown): Promise<ActionResult> {

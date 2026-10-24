@@ -61,7 +61,7 @@ function temp(prefix: string): string {
 before(async () => {
   cert = makeTestCert();
   other = makeTestCert();
-  meta = new FakeMetagame({ name: "Friday Hunts", validCodes: new Set(["ABCD-EFGH-JKLM", "SECOND-CODE", "THIRD-CODE", "FOURTH-CODE", "FIFTH-CODE", "SIXTH-CODE", "EXPOSURE-CODE", "GAMELANG-CODE", "CONSOLE-CODE", "EXISTING-CODE", "PICKED-CODE", "SAVED-CODE"]) });
+  meta = new FakeMetagame({ name: "Friday Hunts", validCodes: new Set(["ABCD-EFGH-JKLM", "SECOND-CODE", "THIRD-CODE", "FOURTH-CODE", "FIFTH-CODE", "SIXTH-CODE", "EXPOSURE-CODE", "GAMELANG-CODE", "CONSOLE-CODE", "EXISTING-CODE", "PICKED-CODE", "SAVED-CODE", "DR-" + "a1".repeat(18), "DR-" + "b2".repeat(18)]) });
   content = new FakeContentServer({ key: "unused", files });
   gateway = https.createServer({ cert: cert.certPem, key: cert.keyPem }, (req, res) => {
     gatewayRequests.push(`${req.method} ${req.url}`);
@@ -331,6 +331,36 @@ test("saved servers: a server joined before comes back with one click, keeping i
     assert.deepEqual(await hx.c.forgetServer(), { ok: true });
     assert.deepEqual(await hx.c.removeSavedServer(entry.id), { ok: true });
     assert.deepEqual(hx.c.snapshot().savedServers, []);
+  } finally {
+    await hx.c.shutdown();
+  }
+});
+
+test("an invite typed on the Register page, in any form, is the code that gets sent", async () => {
+  const hx = harness();
+  await hx.c.init();
+  try {
+    // Joined without a usable code: a bare code, even inside a pasted message, fixes it.
+    assert.deepEqual(await hx.c.submitInvite(invite(cert.fingerprint, "OLD-CODE-0001")), { ok: true });
+    assert.deepEqual(await hx.c.setInviteCode("my invite is DR-" + "a1".repeat(18) + " thanks"), { ok: true });
+    assert.equal(hx.c.snapshot().server?.hasPendingInvite, true);
+    assert.deepEqual(await hx.c.setInviteCode("not a code!"), { ok: false, error: { code: "invite_invalid_format", detail: "code" } });
+    assert.deepEqual(await hx.c.register("Typed_Code"), { ok: true, username: "Typed_Code" });
+    assert.equal(meta.registrations.at(-1)?.code, "DR-" + "a1".repeat(18));
+    assert.equal(hx.c.snapshot().server?.hasPendingInvite, false, "spent with the registration");
+  } finally {
+    await hx.c.shutdown();
+  }
+});
+
+test("a whole Discord message with the invite link inside is accepted as an invite", async () => {
+  const hx = harness();
+  await hx.c.init();
+  try {
+    const message = ["```", invite(cert.fingerprint, "DR-" + "b2".repeat(18)), "```", "Copy the entire invite above into the Join box"].join(String.fromCharCode(10));
+    assert.deepEqual(await hx.c.submitInvite(message), { ok: true });
+    assert.deepEqual(await hx.c.register("From_Message"), { ok: true, username: "From_Message" });
+    assert.equal(meta.registrations.at(-1)?.code, "DR-" + "b2".repeat(18));
   } finally {
     await hx.c.shutdown();
   }

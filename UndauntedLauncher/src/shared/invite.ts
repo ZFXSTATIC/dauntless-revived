@@ -232,3 +232,33 @@ export function formatInvite(invite: Invite): string {
   if (invite.mode === "private" && invite.share) parts.push(`share=${encodeURIComponent(invite.share)}`);
   return `${INVITE_SCHEME}://join?${parts.join("&")}`;
 }
+
+// Players paste whatever Discord showed them: the whole message, the link in a code block, or only
+// the code. These helpers find the invite inside that text; parseInvite still checks it strictly.
+export function findInviteLink(input: unknown): string | null {
+  if (typeof input !== "string" || input.length > MAX_INVITE_LENGTH * 4) return null;
+  const m = /dauntless-revived:\/\/join\/?\?[^\s`'"<>]+/i.exec(input);
+  return m ? m[0] : null;
+}
+
+// The invite code from a link, a bare code, or a message that contains either. A bare code is
+// only taken from text that has no spaces around it, or that starts with the DR- prefix the
+// Discord bot uses, so that ordinary words are not mistaken for a code.
+export function extractInviteCode(input: unknown): string | null {
+  const link = findInviteLink(input);
+  if (link) {
+    const r = parseInvite(link);
+    return r.ok ? r.invite.code : null;
+  }
+  if (typeof input !== "string" || input.length > MAX_INVITE_LENGTH) return null;
+  const prefixed = /\bDR-[A-Za-z0-9-]{8,60}\b/.exec(input);
+  if (prefixed) return prefixed[0];
+  const bare = input.trim().replace(/^[`'"]+|[`'"]+$/g, "");
+  return isValidInviteCode(bare) ? bare : null;
+}
+
+// True when pasted text is an invite (a link, or a DR- code) and so can never be an account key.
+export function looksLikeInvite(input: unknown): boolean {
+  if (typeof input !== "string") return false;
+  return findInviteLink(input) !== null || /\bDR-[A-Za-z0-9-]{8,60}\b/.test(input);
+}

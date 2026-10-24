@@ -387,6 +387,10 @@ function registerIpc(c: Controller): void {
     const s = boundedString(username, 32);
     return s === null ? { ok: false, error: { code: "username_invalid" } } : c.register(s);
   });
+  handle(IPC.setInviteCode, (_e, text) => {
+    const s = boundedString(text, 8192);
+    return s === null ? { ok: false, error: { code: "invite_invalid_format" } } : c.setInviteCode(s);
+  });
   handle(IPC.useExistingKey, (_e, text) => {
     const s = boundedString(text, 8192);
     return s === null ? { ok: false, error: { code: "key_invalid" } } : c.useExistingKey(s);
