@@ -1,3 +1,4 @@
+import {RecordPlayingAddress} from '../controllers/moderation';
 import { Router } from "express";
 import { logger } from "../logger";
 import { HasUndauntedMetagameAuth } from "../middleware/HasUndauntedMetagameAuth";
@@ -14,6 +15,8 @@ import { RealProgressionOnly, RefuseForeignPlayer, SendRealReply } from "../midd
 import { GetDb } from "../db";
 import { TouchPlayer } from "../controllers/party";
 import { RefuseUnlessGameserver } from "../middleware/GameServerOnly";
+import { TrialsError, UpdateLeaderboardProfile } from "../controllers/trials";
+import { BOUNTY_TOKENS_DAILY } from "../controllers/inventory";
 
 export const systemRouter = Router();
 
@@ -51,6 +54,7 @@ systemRouter.post("/heartbeat", HasUndauntedMetagameAuth, async (req: any, res) 
 	// (upstream stored it under the key undefined). A player's heartbeat also keeps them in
 	// their party (controllers/party.ts drops members nobody has heard from).
 	if(typeof UserId === "string"){
+		if(!req.AuthData.IsGameserver) RecordPlayingAddress(req,UserId);
 		await UpdatePlayerActivity(UserId, UserMap, req.body?.state);
 		TouchPlayer(UserId);
 	}
@@ -73,11 +77,24 @@ systemRouter.post("/account/migrate", HasUndauntedMetagameAuth, (req, res) => {
 	});
 });
 
-systemRouter.post("/profile/update", HasUndauntedMetagameAuth, (req, res) => {
-	logger.info("Leaderboard update profile (stubbed)");
+systemRouter.post("/profile/update", HasUndauntedMetagameAuth, (req: any, res) => {
+    try{
+        UpdateLeaderboardProfile(req.AuthData.userId, req.body);
+        logger.info(`Updated leaderboard profile for ${req.AuthData.userId}`);
+        res.status(200);
+        res.send();
+    }
+    catch(error){
+        if(error instanceof TrialsError){
+            res.status(error.Status);
+            res.json({code: String(error.Status), message: error.message});
+            return;
+        }
 
-	res.status(200);
-	res.send();
+        logger.error(error, "Leaderboard profile update failed");
+        res.status(500);
+        res.json({code: "500", message: "Leaderboard profile update failed"});
+    }
 });
 
 systemRouter.get("/vivox/login", HasUndauntedMetagameAuth, (req, res) => {
@@ -340,8 +357,8 @@ systemRouter.get("/bounty/game-data", HasUndauntedMetagameAuth, (req: any, res) 
       num_spicy_options: 1,
       bounty_token_id: "TOKEN_BOUNTY_DRAFT",
       premium_bounty_token_id: "TOKEN_BOUNTY_DRAFT_PREMIUM",
-      num_tokens_hp_start: 4,
-      num_tokens_per_day: 0,
+      num_tokens_hp_start: BOUNTY_TOKENS_DAILY,
+      num_tokens_per_day: BOUNTY_TOKENS_DAILY,
       bounty_token_grant_hour: 0,
       history_length: 10,
       bronze_count: 9,

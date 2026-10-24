@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { HasUndauntedMetagameAuth } from "../middleware/HasUndauntedMetagameAuth";
 import { logger } from "../logger";
+import { GameSessionForCandidate } from "../controllers/matchmaking";
 import { CancelMatchmaking, CheckAndUpdateQueueStatus, DecideCandidateStatus, HandlePlayerMatchmaking, JoinPartyCandidateById, LeaveCandidate, MatchmakingResult } from "../controllers/matchmaking";
+import { MatchmakingRoster } from "../controllers/matchmakingroster";
 
 export const matchmakingRouter = Router();
 
@@ -43,14 +45,46 @@ matchmakingRouter.delete("/candidate/leave", CancelOn, HasUndauntedMetagameAuth,
     res.json({});
 });
 
-// A hunt server waiting for its players asks which ones it should still expect.
-// Echoing its own list changes nothing (a same-length list is ignored).
+function NativeSessionId(value: unknown) {
+    return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+        ? value.toLowerCase() : undefined;
+}
+
+function ConnectedPlayerSnapshot(value: unknown): string[] | undefined {
+    if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > 8192) return undefined;
+    try {
+        const ids: unknown = JSON.parse(value);
+        if (!Array.isArray(ids) || ids.length > 128
+            || ids.some(id => typeof id !== 'string' || !/^[\x21-\x7e]{1,128}$/.test(id))
+            || new Set(ids).size !== ids.length) return undefined;
+        return ids;
+    } catch {
+        return undefined;
+    }
+}
+
+// The native request contains the complete expected roster, including players who
+// already arrived. Only a complete connection snapshot from that deployment can
+// distinguish a missing player from a connected player who stopped matchmaking.
+// An absent/incomplete snapshot preserves unresolved members; legacy or unknown
+// deployments retain their roster, including after a metagame restart.
 matchmakingRouter.post("/candidate/player/alive", MiscRoutesOn, HasUndauntedMetagameAuth, (req: any, res) => {
     const PlayerIds = Array.isArray(req.body?.playerIds) ? req.body.playerIds.filter((Id: unknown) => typeof Id === "string") : [];
+    const SessionHeader = req.headers['x-dauntless-game-session-id'];
+    const HeaderSessionId = NativeSessionId(SessionHeader);
+    const QuerySessionId = NativeSessionId(req.query.sessionId);
+    const SessionId = SessionHeader === undefined ? QuerySessionId : HeaderSessionId;
+    const MatchingSession = req.query.sessionId === undefined || QuerySessionId === SessionId;
+    const ExpectedPurpose = req.query.purpose === 'expected' || (HeaderSessionId !== undefined && req.query.purpose === undefined);
+    const ExpectedPlayerIds = req.AuthData.IsGameserver === true && SessionId && MatchingSession && ExpectedPurpose
+        ? MatchmakingRoster.reconcileExpected(PlayerIds, {
+            sessionId: SessionId,
+            connectedPlayerIds: HeaderSessionId ? ConnectedPlayerSnapshot(req.headers['x-dauntless-connected-player-ids']) : undefined
+        }) : PlayerIds;
 
     res.status(200);
     res.json({
-        expectedPlayerIds: PlayerIds
+        expectedPlayerIds: ExpectedPlayerIds
     });
 });
 
@@ -114,7 +148,7 @@ matchmakingRouter.get("/candidate/status", HasUndauntedMetagameAuth, async (req:
             res.status(200);
             res.json({
                 candidateId: MatchmakingResult.CandidateId,
-                candidateStatusPeriodMillis: 10000,
+                candidateStatusPeriodMillis: MatchmakingResult.Private || MatchmakingResult.PartyCandidate ? 1000 : 10000,
                 gameMode: "ISLAND",
                 huntId: MatchmakingResult.HuntId,
                 playerStates: PlayerStatesOf(MatchmakingResult),
@@ -129,13 +163,13 @@ matchmakingRouter.get("/candidate/status", HasUndauntedMetagameAuth, async (req:
             res.status(200);
             res.json({
                 candidateId: MatchmakingResult.CandidateId,
-                candidateStatusPeriodMillis: 10000,
+                candidateStatusPeriodMillis: MatchmakingResult.Private || MatchmakingResult.PartyCandidate ? 1000 : 10000,
                 gameMode: "ISLAND",
                 huntId: MatchmakingResult.HuntId,
                 playerStates: PlayerStatesOf(MatchmakingResult),
                 serverInfo: {
                     buildId: TARGET_CHANGELIST + "_1.4.4_shipping", // TODO: pull the end of the buildstring from somewhere nonstatic
-                    gameSessionId: MatchmakingResult.CandidateId,
+                    gameSessionId: GameSessionForCandidate(MatchmakingResult),
                     host: MatchmakingResult.Host,
                     port: MatchmakingResult.Port
                 },
@@ -150,7 +184,7 @@ matchmakingRouter.get("/candidate/status", HasUndauntedMetagameAuth, async (req:
             res.status(200);
             res.json({
                 candidateId: MatchmakingResult.CandidateId,
-                candidateStatusPeriodMillis: 10000,
+                candidateStatusPeriodMillis: MatchmakingResult.Private || MatchmakingResult.PartyCandidate ? 1000 : 10000,
                 gameMode: "ISLAND",
                 huntId: MatchmakingResult.HuntId,
                 playerStates: PlayerStatesOf(MatchmakingResult),
@@ -173,7 +207,6 @@ matchmakingRouter.post("/candidate/join", HasUndauntedMetagameAuth, async (req: 
     const GameMode = req.body.gameMode;
     const GameArgs = req.body.gameArgs;
     const HuntId = req.body.playerHuntId;
-    const PrivateMatch = req.body.privateMatch === true || req.body.isPrivate === true;
 
     logger.info(`UserId ${UserId} wants to join a game with GameMode ${GameMode} & GameArgs ${GameArgs} & HuntId ${HuntId}`);
 
@@ -181,7 +214,8 @@ matchmakingRouter.post("/candidate/join", HasUndauntedMetagameAuth, async (req: 
     // A reasonable addition would be checks on frequency of MM/server spinup
     // Best scenario is 1-1 for server session<->player and a new server cooldown
 
-    const MatchmakingResult = await HandlePlayerMatchmaking(GameMode, GameArgs, HuntId, UserId, PrivateMatch);
+    const Private = req.body.isPrivate === true || req.body.privateMatch === true;
+    const MatchmakingResult = await HandlePlayerMatchmaking(GameMode, GameArgs, HuntId, UserId, Private);
 
     if(!MatchmakingResult){
         res.status(400);
@@ -201,6 +235,7 @@ matchmakingRouter.post("/candidate/join", HasUndauntedMetagameAuth, async (req: 
     res.status(200);
     res.json({
         candidateId: MatchmakingEntry.CandidateId,
+        candidateStatusPeriodMillis: MatchmakingEntry.Private || MatchmakingEntry.PartyCandidate ? 1000 : 10000,
         gameMode: GameMode,
         huntId: HuntId,
         status: "MATCHING",
@@ -227,6 +262,7 @@ matchmakingRouter.post("/candidate/join/:candidateId", HasUndauntedMetagameAuth,
     res.status(200);
     res.json({
         candidateId: Candidate.CandidateId,
+        candidateStatusPeriodMillis: 1000,
         gameMode: Candidate.GameMode,
         huntId: Candidate.HuntId,
         status: "MATCHING",

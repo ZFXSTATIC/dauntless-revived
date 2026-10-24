@@ -1,4 +1,12 @@
+#include "CityIdlePolicy.h"
+#include "ServerRpcGuard.h"
+#include <filesystem>
+#include <fstream>
 #include "HuntIdlePolicy.h"
+#include "NativeDiagnostics.h"
+#include "ConsoleVisibility.h"
+#include "ConnectedPlayerSnapshot.h"
+
 
 #include "ServerFrameLimit.h"
 #include <chrono>
@@ -14,13 +22,23 @@
 #include <ranges>
 #include <cwchar>
 #include <map>
+#include <array>
 
 #include "framework.h"
 #include "SDK.hpp"
+#include "ServerLocale.h"
 #include "MinHook/MinHook.h"
 #include "constants.h"
 #include "Networking.h"
 #include "FallRecovery.h"
+#include "TrialsSchedule.h"
+#include "AutoPressStart.h"
+#include "CellFusionTime.h"
+#include "NoPlatinumPrice.h"
+#include "RamsStorePilot.h"
+#include "DeveloperStyle.h"
+#include "DualSense.h"
+#include "DualSenseIcons.h"
 
 #include "SDK/GameplayAbilities_parameters.hpp"
 #include "SDK/Archon_parameters.hpp"
@@ -48,6 +66,118 @@ namespace Globals {
     std::wstring MetagameAddress;
 
     bool EnableLogging = true;
+}
+
+static ConnectedPlayerSnapshot::Cache ConnectedPlayers;
+
+static const std::wstring& WorkerGameSessionId() {
+    static const std::wstring Id = [] {
+        wchar_t ReadyFile[32768] = {};
+        const auto Length = GetEnvironmentVariableW(L"DR_SERVER_READY_FILE", ReadyFile, 32768);
+        return Length > 0 && Length < 32768
+            ? ConnectedPlayerSnapshot::SessionIdFromReadyFile(std::wstring_view(ReadyFile, Length)) : std::wstring{};
+    }();
+    return Id;
+}
+
+// Called only from GameEngineTickHook. HTTP workers see copied strings under a
+// mutex, never engine objects or the connection array. Pointer values in Shape
+// are compared only, so a new connection/controller forces an immediate sample.
+static void UpdateConnectedPlayerSnapshot() {
+    if (WorkerGameSessionId().empty()) return;
+    const auto Now = GetTickCount64();
+    static ULONGLONG NextCapture = 0;
+    static std::vector<std::array<std::uintptr_t, 4>> PreviousShape;
+    auto* World = UWorld::GetWorld();
+    auto* Driver = Globals::Listening ? Networking::NetDriver : nullptr;
+    if (!Driver || !World || Driver->World != World || World->NetDriver != Driver || Driver->ServerConnection) {
+        ConnectedPlayers.Publish({}, Now);
+        NextCapture = 0;
+        return;
+    }
+
+    std::vector<std::array<std::uintptr_t, 4>> Shape;
+    std::vector<UNetConnection*> Active;
+    bool Complete = true;
+    int ConnectionCount = 0;
+    const auto Inspect = [&](UNetConnection* Connection) {
+        if (!Connection || ++ConnectionCount > ConnectedPlayerSnapshot::MaxConnections) {
+            Complete = false;
+            return;
+        }
+        const auto State = *reinterpret_cast<const uint32_t*>(reinterpret_cast<uintptr_t>(Connection) + 0x134);
+        if (State != 2 && State != 3) {
+            Shape.push_back({reinterpret_cast<uintptr_t>(Connection), 0, 0, State});
+            if (State != 1) Complete = false; // Only USOCK_Closed is known inactive.
+            return; // A closed/unknown connection may retain stale controller fields.
+        }
+        auto* Controller = Connection->PlayerController;
+        auto* PlayerState = Controller ? Controller->PlayerState : nullptr;
+        Shape.push_back({reinterpret_cast<uintptr_t>(Connection), reinterpret_cast<uintptr_t>(Controller),
+            reinterpret_cast<uintptr_t>(PlayerState), State});
+        if (!Controller || !PlayerState
+            || !Controller->IsA(AArchonPlayerController::StaticClass())
+            || !PlayerState->IsA(AArchonPlayerState::StaticClass())) {
+            Complete = false;
+            return;
+        }
+        Active.push_back(Connection);
+    };
+    const auto ValidCount = [](const auto& Connections) {
+        const int Count = Connections.Num();
+        return Count >= 0 && Count <= ConnectedPlayerSnapshot::MaxConnections
+            && (Count == 0 || Connections.IsValid());
+    };
+    if (!ValidCount(Driver->ClientConnections)) Complete = false;
+    else for (auto* Connection : Driver->ClientConnections) {
+        Inspect(Connection);
+        if (!Connection) continue;
+        if (!ValidCount(Connection->Children)) { Complete = false; continue; }
+        for (auto* Child : Connection->Children) {
+            Inspect(Child);
+            // UE child connections are one level deep. An unexpected structure
+            // makes the snapshot incomplete instead of silently losing players.
+            if (!Child || Child->Parent != Connection || Child->Children.Num() != 0) Complete = false;
+        }
+    }
+    if (!Complete) {
+        ConnectedPlayers.Publish({}, Now);
+        NextCapture = 0;
+        return;
+    }
+    if (Now < NextCapture && Shape == PreviousShape) return;
+
+    ConnectedPlayerSnapshot::Builder Snapshot;
+    auto* GameplayStatics = Active.empty() ? nullptr : UArchonGameplayStatics::StaticClass();
+    if (!Active.empty() && (!GameplayStatics
+        || !GameplayStatics->GetFunction("ArchonGameplayStatics", "IsValidNetId")
+        || !UArchonGameplayStatics::GetDefaultObj())) {
+        ConnectedPlayers.Publish({}, Now);
+        PreviousShape = std::move(Shape);
+        NextCapture = Now + 1000;
+        return;
+    }
+    for (auto* Connection : Active) {
+        auto* PlayerState = static_cast<AArchonPlayerState*>(Connection->PlayerController->PlayerState);
+        // The generated wrapper assumes this function exists. Check it first so
+        // an incompatible class cannot turn an unknown identity into a crash.
+        if (!PlayerState->Class->GetFunction("ArchonPlayerState", "GetUniqueIdAsString")
+            || !UArchonGameplayStatics::IsValidNetId(PlayerState->UniqueId)) {
+            Snapshot.Invalidate();
+            break;
+        }
+        const auto Id = PlayerState->GetUniqueIdAsString();
+        if (!Id.IsValid() || Id.Num() < 2
+            || Id.Num() > static_cast<int>(ConnectedPlayerSnapshot::MaxPlayerIdLength + 1)
+            || Id.CStr()[Id.Num() - 1] != L'\0') {
+            Snapshot.Invalidate();
+            break;
+        }
+        Snapshot.AddConnection(3, std::wstring_view(Id.CStr(), Id.Num() - 1));
+    }
+    ConnectedPlayers.Publish(Snapshot.Header(), Now);
+    PreviousShape = std::move(Shape);
+    NextCapture = Now + 1000;
 }
 
 std::map<std::wstring, std::wstring> EndpointMap = {};
@@ -311,7 +441,7 @@ FString* GetGameDefaultMap(FString* a1) {
 void* OrigGetCommandLine = nullptr;
 
 const wchar_t* GetCommandLineHook() {
-    return L"Dauntless-Win64-Shipping.exe -server -unattended -nullrhi -nosound -EpicPortal -RepDriverDisable";
+    return ServerCommandLine;
 }
 
 void* OrigServerBootCrash = nullptr;
@@ -327,6 +457,8 @@ void EncounterableSetupHook() {
 }
 
 HuntIdlePolicy HuntIdle;
+CityIdlePolicy CityIdle;
+bool IsPooledCity = false;
 
 bool EnableWatchdog = true;
 
@@ -334,6 +466,8 @@ bool EnableWatchdog = true;
 extern "C" {
     __declspec(dllexport) volatile unsigned long long DR_ServerTickCount = 0;
     __declspec(dllexport) volatile double DR_ServerSimulatedSeconds = 0;
+    __declspec(dllexport) volatile unsigned long long DR_EngineMicros = 0;
+    __declspec(dllexport) volatile unsigned long long DR_ReplicationMicros = 0;
 }
 
 void* OrigGameEngineTick = nullptr;
@@ -352,15 +486,30 @@ void GameEngineTickHook(UGameEngine* GameEngine, float DeltaTime, char CanRender
         PreviousTick = std::chrono::steady_clock::now();
     }
 
+    if (IsPooledCity) {
+        auto* World = UWorld::GetWorld();
+        if (World && World->AuthorityGameMode && World->AuthorityGameMode->GameSession)
+            World->AuthorityGameMode->GameSession->MaxPlayers = 20;
+    }
+    DR_TickStage = 1;
     DR_ServerTickCount = DR_ServerTickCount + 1;
     DR_ServerSimulatedSeconds = DR_ServerSimulatedSeconds + DeltaTime;
+    const auto EngineStart = std::chrono::steady_clock::now();
     reinterpret_cast<void(*)(UGameEngine*, float, char)>(OrigGameEngineTick)(GameEngine, DeltaTime, CanRender);
+    DR_EngineMicros += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - EngineStart).count();
+
+    TrialsSchedule::Tick();
+    CellFusionTime::Tick();
 
     // Recover on the authoritative game thread before replicating this frame.
     FallRecovery::Tick(Globals::Listening ? Networking::NetDriver : nullptr, DeltaTime);
 
     if (Globals::Listening) {
+        DR_TickStage = 2;
+        const auto ReplicationStart = std::chrono::steady_clock::now();
         Networking::TickNetworking();
+        DR_ReplicationMicros += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - ReplicationStart).count();
+        DR_TickStage = 3;
     }
 
     if (Globals::DoListen) {
@@ -368,19 +517,49 @@ void GameEngineTickHook(UGameEngine* GameEngine, float DeltaTime, char CanRender
         Globals::Listening = Networking::Listen(UEngine::GetEngine(), Globals::Port);
     }
 
+    UpdateConnectedPlayerSnapshot();
+
     if (Globals::Listening && Networking::NetDriver) {
         bool HasConnection = false;
+        int ActiveConnections = 0;
 
         for (UNetConnection* Connection : Networking::NetDriver->ClientConnections) {
-            if (Connection) {
+            // Pending (2) and open (3) connections protect clients still loading.
+            if (Connection && (*(uint32_t*)((uintptr_t)Connection + 0x134) == 2
+                || *(uint32_t*)((uintptr_t)Connection + 0x134) == 3)) {
                 HasConnection = true;
-                break;
+                ++ActiveConnections;
             }
         }
 
-        if (EnableWatchdog && HuntIdle.Advance(DeltaTime, HasConnection)) {
+        static auto PreviousIdleCheck = std::chrono::steady_clock::now();
+        const auto IdleNow = std::chrono::steady_clock::now();
+        const double Elapsed = std::chrono::duration<double>(IdleNow - PreviousIdleCheck).count();
+        PreviousIdleCheck = IdleNow;
+        if (IsPooledCity) {
+            static auto NextOccupancyWrite = IdleNow;
+            if (IdleNow >= NextOccupancyWrite) {
+                NextOccupancyWrite = IdleNow + std::chrono::seconds(1);
+                wchar_t Directory[32768] = {};
+                const auto Length = GetEnvironmentVariableW(L"GAMESERVER_READY_DIR", Directory, 32768);
+                if (Length > 0 && Length < 32768) {
+                    const auto File = std::filesystem::path(Directory) / (L"city-occupancy-" + std::to_wstring(GetCurrentProcessId()) + L".txt");
+                    const auto Temporary = std::filesystem::path(File.wstring() + L".tmp");
+                    { std::ofstream Output(Temporary); Output << GetCurrentProcessId() << " " << ActiveConnections << "\n"; }
+                    MoveFileExW(Temporary.c_str(), File.c_str(), MOVEFILE_REPLACE_EXISTING);
+                }
+            }
+        }
+        const bool IdleExpired = IsPooledCity ? CityIdle.Advance(Elapsed, HasConnection)
+            : EnableWatchdog && HuntIdle.Advance(Elapsed, HasConnection);
+        if (IdleExpired) {
             std::cout << "Hunt idle timeout on port " << Globals::Port << std::endl;
-            exit(0);
+            DR_WriteDiagnostic("idle_timeout\n", 13);
+            // This is an injected DLL in a multithreaded UE process. CRT exit runs
+            // teardown while engine threads still use its state, hanging/crashing.
+            // Only empty temporary worlds reach here; end the whole process without DLL teardown.
+            TerminateProcess(GetCurrentProcess(), 0);
+            return;
         }
 
         for (UNetConnection* Conn : Networking::NetDriver->ClientConnections) {
@@ -409,7 +588,21 @@ char ProcessRequest(void* Request) {
     FString APIHeader(L"x-undaunted-gameserver-apikey");
     FString APIKey(Globals::ServerAPIKey);
 
-    reinterpret_cast<void(*)(void*, FString*, FString*)>(Globals::BaseAddress + 0x28AAAA0)(Request, &APIHeader, &APIKey);
+    const auto SetHeader = reinterpret_cast<void(*)(void*, FString*, FString*)>(Globals::BaseAddress + 0x28AAAA0);
+    SetHeader(Request, &APIHeader, &APIKey);
+
+    const auto& SessionId = WorkerGameSessionId();
+    if (!SessionId.empty()) {
+        const auto Snapshot = ConnectedPlayers.Read(GetTickCount64());
+        FString SessionHeader(L"x-dauntless-game-session-id");
+        FString SessionValue(SessionId.c_str());
+        FString ConnectedHeader(L"x-dauntless-connected-player-ids");
+        FString ConnectedValue(Snapshot.c_str());
+        SetHeader(Request, &SessionHeader, &SessionValue);
+        // Clear a previous value on a reused/retried HTTP request too. Empty is
+        // deliberately invalid JSON and means unknown, while [] means empty.
+        SetHeader(Request, &ConnectedHeader, &ConnectedValue);
+    }
 
     return reinterpret_cast<char(*)(void*)>(OrigProcessRequest)(Request);
 }
@@ -621,8 +814,26 @@ static bool IsPotionPurchaseQuestOpen() {
     return false;
 }
 
+#include "GrannyPurchaseTabs.h"
+#include "CreatorRewardRefresh.h"
+
+
 void ProcessEventClientHook(UObject* Object, UFunction* Function, void* Parms) {
+
+    RamsStorePilot::Scope RamsScope(Object, Function, Parms);
     reinterpret_cast<void(*)(UObject*, UFunction*, void*)>(OrigProcessEventClient)(Object, Function, Parms);
+
+    TrialsSchedule::Tick();
+    CellFusionTime::Tick();
+    AutoPressStart::OnProcessEvent(Object, Function);
+    DualSenseIcons::OnProcessEvent();
+    NoPlatinumPrice::OnProcessEvent(Object);
+    GrannyPurchaseTabs::Observe(Object);
+    CreatorRewardRefresh::OnProcessEvent(Object, Function);
+
+
+
+    DeveloperStyle::OnProcessEvent(Object, Function);
 
     static UFunction* CanPurchase = nullptr;
     if (Function == CanPurchase || (!CanPurchase && Function && Function->GetFullName().contains("EquipmentItemViewModel.CanPurchase"))) {
@@ -647,6 +858,22 @@ bool DidDoTravelReset = false;
 void* OrigProcessEvent = nullptr;
 
 void ProcessEventHook(UObject* Object, UFunction* Function, void* Parms) {
+    // This hook is installed only in game servers. Never inspect RPC arguments
+    // or infer bans from timing, movement corrections, or server-side calls.
+    if (Function && (Function->FunctionFlags & static_cast<uint32_t>(EFunctionFlags::NetServer))) {
+        static thread_local std::map<UFunction*, bool> GuardDecisions;
+        auto [Entry, Inserted] = GuardDecisions.try_emplace(Function, false);
+        if (Inserted) {
+            const auto Name = Function->GetFullName();
+            Entry->second = IsBlockedServerRpc(Name);
+            if (Entry->second) {
+                // At most once per denied function/thread; no arguments or identities.
+                const auto Line = "security_rpc_blocked function=" + Name + "\n";
+                DR_WriteDiagnostic(Line.c_str(), static_cast<DWORD>(Line.size()));
+            }
+        }
+        if (Entry->second) return;
+    }
     static UFunction* ServerTryActivateAbilityWithEventData = nullptr;
     static UFunction* ServerTryActivateAbility = nullptr;
 
@@ -656,6 +883,8 @@ void ProcessEventHook(UObject* Object, UFunction* Function, void* Parms) {
         Params::AbilitySystemComponent_ServerTryActivateAbilityWithEventData* ActivateAbilityParams = (Params::AbilitySystemComponent_ServerTryActivateAbilityWithEventData*)Parms;
 
         ServerTryActivateAbilityInternal((UAbilitySystemComponent*)Object, ActivateAbilityParams->AbilityToActivate, ActivateAbilityParams->InputPressed, ActivateAbilityParams->PredictionKey, &ActivateAbilityParams->TriggerEventData);
+        // Replaces the native RPC handler; forwarding would activate it twice.
+        return;
     }
     else if (Function == ServerTryActivateAbility || (!ServerTryActivateAbility && Function->GetFullName().contains("ServerTryActivateAbility"))) {
         ServerTryActivateAbility = Function;
@@ -663,6 +892,8 @@ void ProcessEventHook(UObject* Object, UFunction* Function, void* Parms) {
         Params::AbilitySystemComponent_ServerTryActivateAbility* ActivateAbilityParams = (Params::AbilitySystemComponent_ServerTryActivateAbility*)Parms;
 
         ServerTryActivateAbilityInternal((UAbilitySystemComponent*)Object, ActivateAbilityParams->AbilityToActivate, ActivateAbilityParams->InputPressed, ActivateAbilityParams->PredictionKey, nullptr);
+        // Replaces the native RPC handler; forwarding would activate it twice.
+        return;
     }
 
     reinterpret_cast<void(*)(UObject*, UFunction*, void*)>(OrigProcessEvent)(Object, Function, Parms);
@@ -674,10 +905,16 @@ bool ConfigCacheInitGetStringHook(void* a1, const wchar_t* Section, const wchar_
     EvalEndpointMap();
 
     if (EndpointMap.contains(Key)) {
-        *Value = FString(EndpointMap.at(Key).c_str());
+        auto& Endpoint=EndpointMap.at(Key);
+        RamsStoreProtocol::Mark(Key,Endpoint,RamsStorePilot::Enabled);
+        *Value = FString(Endpoint.c_str());
 
         return true;
     }
+
+    // Dedicated servers only override Phoenix endpoints; leave other subsystem settings intact.
+    if (Globals::AmServer)
+        return reinterpret_cast<bool(*)(void*, const wchar_t*, const wchar_t*, FString*, FString*)>(OrigConfigCacheIniGetString)(a1, Section, Key, Value, Filename);
 
     if (std::wstring(Section).contains(L"Mcp")) {
         if (std::wstring(Key).contains(L"protocol") || std::wstring(Key).contains(L"Protocol")) {
@@ -699,6 +936,12 @@ bool ConfigCacheInitGetStringHook(void* a1, const wchar_t* Section, const wchar_
 void* OrigGetEscalationSeason = nullptr;
 
 bool GetEscalationSeason(UHuntCatalog* a1, FString* HuntID, FHunt_UnlockInfo* UnlockInfo, FHunt_UnlockInfo* AltUnlockInfo, AArchonPlayerController* PC) { // TODO: Fixup scheduling & Player leveling so this hack isn't necessary
+    // The Trials screen shows the first unlocked weekly row, so only this week's row may pass.
+    bool IsTrialRow = false;
+    const bool TrialRowUnlocked = TrialsSchedule::IsTrialRowUnlocked(HuntID->ToString(), PC, IsTrialRow);
+    if (IsTrialRow)
+        return TrialRowUnlocked;
+
     if (HuntID->ToString().contains("Arena") || (HuntID->ToString().contains("Esca") && !HuntID->ToString().contains("Mint"))) {
         return true;
     }
@@ -716,10 +959,35 @@ __int64 GetTrackProgress(void* a1, FName* a2, void* a3) {
     return 9999999;
 }
 
+// Set to 0 to drop the EAC client init hook below (and its two lines in InitClientHooks).
+#define DR_SKIP_EAC_CLIENT_INIT 1
+
+#if DR_SKIP_EAC_CLIENT_INIT
+void* OrigEACClientInit = nullptr;
+
+// The EAC client plugin's init (the function that checks -NoEAC). It still ends up in
+// CreateGameClient, which fails and leaves the "Failed to create IGameClient instance!" popup.
+// Doing nothing here is the same as its own -NoEAC exit.
+void EACClientInitHook(void* a1) {
+}
+#endif
+
 //__int64 *__fastcall sub_141428060(__int64 a1, __int64 *a2, unsigned __int8 a3, char a4)
 
 void InitClientHooks() {
     MH_Initialize();
+    GrannyPurchaseTabs::Install(Globals::BaseAddress);
+
+    RamsStorePilot::Install(Globals::BaseAddress);
+
+    DualSense::Install();
+    DualSenseIcons::Install(Globals::BaseAddress);
+
+#if DR_SKIP_EAC_CLIENT_INIT
+    MH_CreateHook((void*)(Globals::BaseAddress + 0xEF2440), EACClientInitHook, &OrigEACClientInit);
+
+    MH_EnableHook((void*)(Globals::BaseAddress + 0xEF2440));
+#endif
 
     MH_CreateHook((void*)(Globals::BaseAddress + 0x1528000), HasFinishedLoadingHook, &OrigHasFinishedLoading);
 
@@ -769,6 +1037,15 @@ int NetModeHook(void* a1) { //char __fastcall UArchonStaminaComponent_TryConsume
 
 void InitServerHooks() {
     MH_Initialize();
+    GrannyPurchaseTabs::Install(Globals::BaseAddress);
+
+    Networking::InitChannelTracking(Globals::BaseAddress);
+
+    // SYSTEM and service accounts do not inherit a launcher-generated Game.ini.
+    // The worker reaches the same backend through its loopback SSH tunnel.
+    Globals::MetagameAddress = L"127.0.0.1:61000";
+    MH_CreateHook((void*)(Globals::BaseAddress + 0x1D09D50), ConfigCacheInitGetStringHook, &OrigConfigCacheIniGetString);
+    MH_EnableHook((void*)(Globals::BaseAddress + 0x1D09D50));
 
     MH_CreateHook((void*)(Globals::BaseAddress + 0x25A37C0), GetGameDefaultMap, &OrigGetDefaultMap);
 
@@ -970,7 +1247,9 @@ void Init() {
             Globals::ExpectedPlayerString = Args[6];
             Globals::MyIpAndPort = Args[7];
 
-            if (Globals::Port >= 8776) {
+            if (std::wstring(Globals::MapPath).contains(L"/ramsgate/ramsgate_01_persistent")) {
+                wchar_t Pool[2] = {};
+                IsPooledCity = GetEnvironmentVariableW(L"DR_RAMSGATE_POOL", Pool, 2) == 1 && Pool[0] == L'1';
                 EnableWatchdog = false;
                 Globals::EnableLogging = true;
             }
@@ -982,10 +1261,7 @@ void Init() {
         }
 
         if (Globals::EnableLogging) {
-            AllocConsole();
-            FILE* Dummy;
-            freopen_s(&Dummy, "CONOUT$", "w", stdout);
-            freopen_s(&Dummy, "CONIN$", "r", stdin);
+            InitServerConsole();
 
             std::cout << "Welcome to Undaunted v" << UNDAUNTED_INTERNAL_VERSION << "!" << std::endl;
             std::cout << "prod. gwog :3" << std::endl;
@@ -994,6 +1270,13 @@ void Init() {
             std::cout << "Running as a server!" << std::endl;
         }
 
+        DR_InitDiagnostics();
+        ConfigureServerLocale();
+        const char* NumericLocale = setlocale(LC_NUMERIC, nullptr);
+        if (NumericLocale && strcmp(NumericLocale, "C") == 0) {
+            constexpr char LocaleReady[] = "server_locale numeric=C commandline_culture=en-US\n";
+            DR_WriteDiagnostic(LocaleReady, sizeof(LocaleReady) - 1);
+        }
         InitServerHooks();
     }
     else {
@@ -1002,6 +1285,22 @@ void Init() {
         if (Globals::EnableLogging) {
             if (!IsRunningUnderWine()) {
                 AllocConsole();
+                // Players don't need the log window: keep it hidden, off the screen and the taskbar, so
+                // it never covers the game and can't be closed by mistake (closing it ends the game).
+                // DR_SHOW_CONSOLE=1 in the environment keeps it visible for troubleshooting.
+                // The console host shows the window a moment after AllocConsole returns, and the game
+                // shows it again whenever it changes screens (loading into the world, display mode
+                // changes), so a small thread keeps it hidden for the whole session.
+                char ShowConsole[2] = {};
+                if (GetEnvironmentVariableA("DR_SHOW_CONSOLE", ShowConsole, sizeof(ShowConsole)) != 1 || ShowConsole[0] != '1') {
+                    CreateThread(nullptr, 0, [](LPVOID) -> DWORD {
+                        for (;;) {
+                            HWND Console = GetConsoleWindow();
+                            if (Console && IsWindowVisible(Console)) ShowWindow(Console, SW_HIDE);
+                            Sleep(50);
+                        }
+                    }, nullptr, 0, nullptr);
+                }
                 FILE* Dummy;
                 freopen_s(&Dummy, "CONOUT$", "w", stdout);
                 freopen_s(&Dummy, "CONIN$", "r", stdin);
@@ -1022,6 +1321,7 @@ void Init() {
             Globals::MetagameAddress = Args[1];
         }
 
+        DR_InitDiagnostics(); // only when GAMESERVER_READY_DIR is set, e.g. a manual debug launch
         InitClientHooks();
     }
 

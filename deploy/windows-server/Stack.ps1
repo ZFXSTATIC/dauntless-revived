@@ -382,6 +382,11 @@ function Start-Components([switch]$Supervised) {
         }
         if ($ok -and $c -eq 'gateway' -and -not $WhatIfPreference) { Say ('gateway check: ' + (Get-GatewayCheck)) }
         if ($ok -and $c -eq 'deploy' -and -not $WhatIfPreference) {
+            $deploySettings = Read-DREnv $P.DeployEnv
+            if ($deploySettings['RAMSGATE_POOL'] -ne '0') {
+                Say 'Ramsgate pool ready: cities start on demand, with 20 players per instance'
+                continue
+            }
             $up = $false
             for ($i = 0; $i -lt 60 -and -not $up; $i++) {
                 if (Get-NetUDPEndpoint -LocalPort $UdpEnd -ErrorAction SilentlyContinue) { $up = $true } else { Start-Sleep -Seconds 1 }

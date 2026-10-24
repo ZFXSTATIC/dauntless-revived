@@ -139,18 +139,22 @@ describe("LOG_BODIES", () => {
         await Call("POST", `/notification/platinum?token=${Key}`, { token: Token, body: {} });
         await Call("GET", "/slayerlink/invites", { token: Token });
         await Call("POST", "/reconcile", { token: Token, body: {} });
+        await Call("POST", "/trials/leaderboards", { token: Token, body: {difficulty: 1, trial_id: "Arena_MatchmakerHunt_Elite_001"} });
+        await Call("POST", "/profile/update", { token: Token, body: {dauntlessid: "UID-platform-a", currentdisplayname: "PlatformA"} });
         await Call("GET", "/playertreatments/UID-platform-a", { token: Token });
 
-        const Lines = await WaitForLines((Entry) => /^\/(product|token|notification|slayerlink|reconcile|playertreatments)/.test(Entry.url), 6);
+        const Lines = await WaitForLines((Entry) => /^\/(product|token|notification|slayerlink|reconcile|trials|profile\/update|playertreatments)/.test(Entry.url), 8);
         const Urls = Lines.map((Entry) => Entry.url);
 
         assert.deepEqual(Urls.slice().sort(), [
             "/notification/platinum?token=<redacted>",
             "/product/sku/SKU_TEST",
             "/product/skus/public?requiredTags=Store",
+            "/profile/update",
             "/reconcile",
             "/slayerlink/invites",
-            "/token/platinum/SKU_TEST"
+            "/token/platinum/SKU_TEST",
+            "/trials/leaderboards"
         ]);
         assert.equal(Lines.find((Entry) => Entry.url.startsWith("/product/skus"))!.status, 400);
         assert.ok(!BodyLogLines().some((Entry) => Entry.url.includes(Key)), "the purchase token is never written");
@@ -231,8 +235,8 @@ describe("the switch reader (src/features.ts)", () => {
     });
 
     it("describes every switch in one boot line", () => {
-        assert.equal(DescribeFeatures(), "features: bodyLogPerPath=no-cap escalation=stub escalationStrict=off store=off storeRepeatableTokens=off replayWindow=5s confirmEntitlements=off balanceFromInventory=on slayerLinks=on chatPresence=on verifyStubAccount=off");
+        assert.equal(DescribeFeatures(), "features: bodyLogPerPath=no-cap escalation=stub escalationStrict=off store=off storeRepeatableTokens=off trialsStore=on middlemanStore=on replayWindow=5s confirmEntitlements=off balanceFromInventory=on middlemanFusionGuards=off trialsLeaderboards=on trialsSchedule=off slayerLinks=on chatPresence=on verifyStubAccount=off");
         process.env.BODY_LOG_PER_PATH = "5";
-        assert.equal(DescribeFeatures(), "features: bodyLogPerPath=5 escalation=stub escalationStrict=off store=off storeRepeatableTokens=off replayWindow=5s confirmEntitlements=off balanceFromInventory=on slayerLinks=on chatPresence=on verifyStubAccount=off");
+        assert.equal(DescribeFeatures(), "features: bodyLogPerPath=5 escalation=stub escalationStrict=off store=off storeRepeatableTokens=off trialsStore=on middlemanStore=on replayWindow=5s confirmEntitlements=off balanceFromInventory=on middlemanFusionGuards=off trialsLeaderboards=on trialsSchedule=off slayerLinks=on chatPresence=on verifyStubAccount=off");
     });
 });

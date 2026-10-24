@@ -17,6 +17,14 @@ test("the game folder is required", () => {
     assert.throws(() => LoadConfig({}), /CONTENT_GAME_DIR/);
 });
 
+test("optional CDN base is HTTPS without credentials, query or fragment", () => {
+    assert.equal(LoadConfig({CONTENT_GAME_DIR: "x"}).downloadBaseUrl, undefined);
+    assert.equal(LoadConfig({CONTENT_GAME_DIR: "x", CONTENT_DOWNLOAD_BASE_URL: "https://downloads.example/game"}).downloadBaseUrl, "https://downloads.example/game/");
+    for(const Bad of ["http://example/game", "https://u:p@example/game", "https://example/game?q=1", "https://example/game#x"]){
+        assert.throws(() => LoadConfig({CONTENT_GAME_DIR: "x", CONTENT_DOWNLOAD_BASE_URL: Bad}));
+    }
+});
+
 test("bind addresses: loopback and Tailscale only, unless explicitly allowed", () => {
     for(const Ok of ["127.0.0.1", "::1", "localhost", "100.64.0.1", "100.101.102.103", "100.127.255.254", "fd7a:115c:a1e0::1"]){
         assert.equal(IsPrivateBindHost(Ok), true, Ok);

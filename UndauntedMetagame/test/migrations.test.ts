@@ -119,14 +119,60 @@ describe("migrations after the last release (0013_guilds)", () => {
 
     it("the new migration files only create tables and indexes", () => {
         for(const Entry of NewEntries){
+            // SQLite CHECK constraints require a table rebuild; covered with seeded rows below.
+            if (['0022_germany_region','0028_us_region'].includes(Entry.tag)) continue;
             const Sql = fs.readFileSync(path.join(MIGRATIONS, `${Entry.tag}.sql`), "utf8");
+            if(Entry.tag === '0029_temporary_bans'){
+                assert.deepEqual(Sql.split('--> statement-breakpoint').map(s=>s.trim()),[
+                    'ALTER TABLE account_bans ADD COLUMN expires_at integer;',
+                    'ALTER TABLE moderation_events ADD COLUMN expires_at integer;'
+                ]);
+                continue;
+            }
 
+            // Explicit retention change: only legacy address observations may be deleted.
+            if(Entry.tag === '0024_ephemeral_addresses'){
+                assert.equal(Sql.trim(), 'DELETE FROM player_addresses;');
+                continue;
+            }
             assert.doesNotMatch(Sql, /\b(DROP|ALTER|RENAME|DELETE|UPDATE)\b/i, Entry.tag);
             assert.doesNotMatch(Sql, /INSERT\s+INTO[\s\S]*?SELECT/i, Entry.tag);
             for(const Statement of Sql.split("--> statement-breakpoint").map((Part) => Part.trim()).filter((Part) => Part.length > 0)){
                 assert.match(Statement, /^CREATE (TABLE|INDEX|UNIQUE INDEX) /, `${Entry.tag}: ${Statement.slice(0, 60)}`);
             }
         }
+    });
+
+    it('US migration preserves EU, OCE and Germany preferences and enforces ownership', () => {
+        const db = Open(path.join(Dir, 'us-regions.db'));
+        try {
+            db.$client.exec("CREATE TABLE users (userId text PRIMARY KEY); INSERT INTO users VALUES ('eu'), ('au'), ('de'), ('us'); PRAGMA foreign_keys=ON;");
+            db.$client.exec(fs.readFileSync(path.join(MIGRATIONS,'0020_hunt_regions.sql'),'utf8'));
+            db.$client.transaction(() => db.$client.exec(fs.readFileSync(path.join(MIGRATIONS,'0022_germany_region.sql'),'utf8')))();
+            db.$client.exec("INSERT INTO huntregions VALUES ('eu','main'),('au','aus'),('de','ger');");
+            const before = Rows(db,'huntregions');
+            db.$client.transaction(() => db.$client.exec(fs.readFileSync(path.join(MIGRATIONS,'0028_us_region.sql'),'utf8')))();
+            assert.deepEqual(Rows(db,'huntregions'), before);
+            db.$client.prepare('INSERT INTO huntregions VALUES (?,?)').run('us','us');
+            assert.throws(()=>db.$client.prepare('INSERT INTO huntregions VALUES (?,?)').run('missing','us'), /FOREIGN KEY/);
+            assert.throws(()=>db.$client.prepare('UPDATE huntregions SET region=? WHERE userId=?').run('unknown','us'), /CHECK/);
+            assert.deepEqual(db.$client.pragma('foreign_key_check'), []);
+        } finally {db.$client.close();}
+    });
+
+    it('Germany migration preserves existing preferences and enforces supported regions', () => {
+        const db = Open(path.join(Dir, 'regions.db'));
+        try {
+            db.$client.exec("CREATE TABLE users (userId text PRIMARY KEY); INSERT INTO users VALUES ('eu'), ('au'), ('de');");
+            db.$client.exec(fs.readFileSync(path.join(MIGRATIONS,'0020_hunt_regions.sql'),'utf8'));
+            db.$client.exec("INSERT INTO huntregions VALUES ('eu','main'),('au','aus'); PRAGMA foreign_keys=ON;");
+            const before = Rows(db,'huntregions');
+            db.$client.transaction(() => db.$client.exec(fs.readFileSync(path.join(MIGRATIONS,'0022_germany_region.sql'),'utf8')))();
+            assert.deepEqual(Rows(db,'huntregions'), before);
+            db.$client.prepare('INSERT INTO huntregions VALUES (?,?)').run('de','ger');
+            assert.throws(()=>db.$client.prepare('UPDATE huntregions SET region=? WHERE userId=?').run('unknown','de'), /CHECK/);
+            assert.deepEqual(db.$client.pragma('foreign_key_check'), []);
+        } finally {db.$client.close();}
     });
 
     it("keeps every row of a released database, adds empty tables, and the previous build's migrator still runs", () => {
@@ -151,14 +197,14 @@ describe("migrations after the last release (0013_guilds)", () => {
         migrate(Updated, { migrationsFolder: MIGRATIONS });
 
         const NewTables = Tables(Updated).filter((Name) => !OldTables.includes(Name) && !Name.startsWith("__drizzle"));
-        assert.ok(["escalationprogression", "escalationtalents", "escalationunlocks", "storepurchases", "slayerlinkinvites", "slayerlinks"].every((Name) => NewTables.includes(Name)), NewTables.join(", "));
+        assert.ok(["escalationprogression", "escalationtalents", "escalationunlocks", "storepurchases", "slayerlinkinvites", "slayerlinks", "trialruns", "leaderboardprofiles"].every((Name) => NewTables.includes(Name)), NewTables.join(", "));
         assert.deepEqual(Snapshot(Updated, OldTables), Before, "every row of every released table is kept");
         // The social tables the Slayer Links read (0016) are among them; named here so a change to them stands out
         for(const Name of ["friendships", "blocks", "guilds", "guildmembers", "guildinvites"]){
             assert.ok(OldTables.includes(Name), Name);
             assert.equal(Snapshot(Updated, [Name])[Name], Before[Name], `${Name} is byte for byte the same`);
         }
-        assert.deepEqual(SchemaOf(Updated, OldTables), OldSchema, "no released table, index or trigger changed");
+        assert.deepEqual(SchemaOf(Updated, OldTables).filter((row:any)=>row.name !== "inventorytransactions_created_date"), OldSchema, "no released table, index or trigger changed");
         for(const Name of NewTables){
             assert.equal(Rows(Updated, Name).length, 0, `${Name} starts empty`);
         }

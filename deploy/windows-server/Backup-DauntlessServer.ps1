@@ -16,7 +16,7 @@
         <root>\backups\yyyy-MM-dd_HHmmss\secrets\metagame.env, deployserver.env, content.env, gateway.env, *.key
         <root>\backups\yyyy-MM-dd_HHmmss\secrets\tls\gateway-cert.pem, gateway-key.pem
 
-    Retention: the newest -Hourly backups plus the newest backup of each of the last -Daily days.
+    Retention: one verified backup by default, replaced only after the next backup succeeds.
     Runs hourly from the "Dauntless Revived backup" scheduled task (through backup-hidden.vbs, so no
     window appears), and from Stack.ps1 around every start and stop.
 
@@ -28,8 +28,8 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$Root,
-    [int]$Hourly = 48,
-    [int]$Daily = 30
+    [ValidateRange(1, 10000)][int]$Hourly = 1,
+    [ValidateRange(0, 10000)][int]$Daily = 0
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\DauntlessServer.Common.ps1"
@@ -45,6 +45,17 @@ $metaDir = Join-Path $P.App 'UndauntedMetagame'
 if (-not $PSCmdlet.ShouldProcess($P.Backups, 'Back up the database and secrets')) { return }
 
 New-Item -ItemType Directory -Force -Path $P.Backups | Out-Null
+# An OS-held lock covers scheduled and manual/Stack invocations, across accounts.
+# A crashed process releases it automatically; the file itself may remain.
+$lockPath = Join-Path $P.Backups 'backup.lock'
+if (Test-DRReparsePoint $lockPath) { throw 'Backup lock must not be a reparse point' }
+try {
+    $backupLock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+} catch [IO.IOException] {
+    Write-Output 'backup skipped: another backup is still running'
+    exit 0
+}
+try {
 $log = Join-Path $P.Backups 'backup.log'
 # backups is service-writable; this may run as an administrator. Never rotate through a planted
 # reparse point (remove the link instead), and refuse to follow a junctioned backups folder.
@@ -67,7 +78,7 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 # 1. The database. No database yet (fresh install before the first start) is not an error.
 $dbNote = 'no database yet'
 if (Test-Path -LiteralPath $P.Db) {
-    $code = Invoke-DRNative -FilePath $node -Arguments @((Join-Path $PSScriptRoot 'lib\dr-db.js'), 'backup', $metaDir, $P.Db, (Join-Path $dest 'undaunted.db')) `
+    $code = Invoke-DRNative -FilePath $node -Arguments @((Join-Path $PSScriptRoot 'lib\dr-db.js'), 'backup', $metaDir, $P.Db, (Join-Path $dest 'undaunted.db'), '--online', $P.DeployEnv) `
         -WorkingDirectory $P.Root -LogBase (Join-Path $P.Logs 'backup-db')
     if ($code -ne 0) {
         Log "backup FAILED: the database copy did not pass its check (see $($P.Logs)\backup-db.err.log)"
@@ -108,6 +119,15 @@ if (Test-Path -LiteralPath $P.ServerJson) { Copy-Item -LiteralPath $P.ServerJson
 if (Test-Path -LiteralPath $P.News) { Copy-Item -LiteralPath $P.News -Destination $dest }
 
 # 3. Retention.
+# Do not discard the last complete recovery point after an incomplete backup.
+if ($skipped.Count) {
+    Log 'backup incomplete: previous backups retained'
+    exit 1
+}
+if (-not (Test-Path -LiteralPath (Join-Path $dest 'undaunted.db'))) {
+    Log 'no database yet: previous backups retained'
+    exit 0
+}
 $all = Get-DRBackupFolders $P.Backups
 $keep = @{}
 $all | Select-Object -First $Hourly | ForEach-Object { $keep[$_.Name] = $true }
@@ -126,4 +146,7 @@ $extra = ''
 if ($skipped.Count) { $extra += "; not readable by this account: $($skipped -join ', ')" }
 if ($removeFailed) { $extra += "; $removeFailed old backup(s) could not be removed" }
 Log "backup: $dest  ($bytes bytes, $dbNote, $($keep.Count) kept$extra)"
+} finally {
+    $backupLock.Dispose()
+}
 exit 0

@@ -26,6 +26,10 @@ function AuditEvents(File: string): any[] {
 
 function FakeMetagame(Port: number): Promise<FakeUpstream> {
     return StartUpstream(Port, "metagame", (Req, Res) => {
+        if((Req.url ?? "").split("?")[0] === "/game/login"){
+            const Status = Number(new URL(Req.url!, "http://test").searchParams.get("status") ?? 200);
+            Res.writeHead(Status); Res.end(); return true;
+        }
         if((Req.url ?? "").split("?")[0] === "/heartbeat"){
             const Ok = Req.headers["authorization"] === "Bearer good-token";
             Res.writeHead(Ok ? 200 : 401, { "content-type": "text/plain" });
@@ -92,6 +96,24 @@ describe("gateway and allowlist helper together (in process, DRY-RUN)", () => {
         const DryRuns = AuditEvents(HelperConfig.auditLog).filter((Event) => Event.event === "dry_run");
         assert.equal(DryRuns[DryRuns.length - 1].script, BuildFirewallScript(["127.0.0.40"], "8770-8777"));
         assert.ok(!fs.readFileSync(HelperConfig.auditLog, "utf8").includes(HELPER_SECRET));
+    });
+
+    it("game login opens ports only for a bearer-authenticated successful response", async () => {
+        const Before = Feed.Sent;
+        for(const status of [400,401,403,500]){
+            const Response = await HttpsRequest(P.gateway, `/game/login?status=${status}`, {method:"POST",body:"{}",localAddress:"127.0.0.43",headers:{authorization:"Bearer good-token"}});
+            assert.equal(Response.status,status);
+        }
+        for(const headers of [{}, {authorization:"Basic ignored"}] as Record<string,string>[]){
+            assert.equal((await HttpsRequest(P.gateway,"/game/login",{method:"POST",body:"{}",localAddress:"127.0.0.43",headers})).status,200);
+        }
+        await Feed.Idle();
+        assert.equal(Feed.Sent,Before);
+        assert.equal((await HttpsRequest(P.gateway,"/game/login",{method:"POST",body:"{}",localAddress:"127.0.0.44",headers:{authorization:"Bearer good-token"}})).status,200);
+        await Feed.Idle(); await Helper.Sync.Settled();
+        assert.equal(Feed.Sent,Before+1);
+        assert.ok(Helper.State.List().includes("127.0.0.44"));
+        assert.ok(!Helper.State.List().includes("127.0.0.43"));
     });
 
     it("a gateway with the wrong helper secret gets 401 and says so in its log", async () => {

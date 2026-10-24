@@ -144,6 +144,7 @@ const deploy = {
     : path.join(root, "deploy", "openbsd-server", "launch-gameserver.mjs"),
   METAGAME_API_KEY: gsKey,
   SECONDS_TO_WAIT_BETWEEN_GAMESERVER_STARTUP: args["startup-gap"] || 10,
+  RAMSGATE_POOL: args["ramsgate-pool"] ?? readEnv(path.join(config, "deployserver.env")).RAMSGATE_POOL ?? 1,
   ENABLE_DOJO: args["enable-dojo"] || 0,
   NODE_ENV: "production",
 };

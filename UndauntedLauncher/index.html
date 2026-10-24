@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-style="dauntless">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -9,6 +9,7 @@
     <meta name="color-scheme" content="dark" />
     <title>Dauntless Revived Launcher</title>
     <link rel="stylesheet" href="/src/renderer/styles.css" />
+    <link rel="stylesheet" href="/src/renderer/dauntless-style.css" />
     <script type="module" src="/src/renderer/index.ts"></script>
   </head>
   <body>
@@ -58,6 +59,7 @@
             <div class="lang-switch" id="lang-switch" role="group" data-i18n-aria="set_language">
               <button type="button" class="lang-btn" data-lang="en" lang="en">English</button>
               <button type="button" class="lang-btn" data-lang="fi" lang="fi">Suomi</button>
+              <button type="button" class="lang-btn" data-lang="es" lang="es">Español</button>
             </div>
             <div class="rail-links">
               <button type="button" class="rail-link" id="credits-btn"><span data-i18n="nav_credits">Credits</span></button>
@@ -143,6 +145,7 @@
             <section class="view" id="view-news" aria-labelledby="news-title" hidden></section>
             <section class="view" id="view-server" aria-labelledby="server-title" hidden></section>
             <section class="view" id="view-partners" aria-labelledby="partners-title" hidden></section>
+            <section class="view" id="view-mods" aria-labelledby="mods-title" hidden></section>
             <section class="view" id="view-settings" aria-labelledby="settings-title" hidden></section>
             <section class="view" id="view-credits" aria-labelledby="credits-title" hidden></section>
             <footer class="actionbar" id="actionbar">

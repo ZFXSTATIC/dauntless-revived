@@ -13,13 +13,17 @@ import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { OFFLINE_REQUIRED_AVAILABLE_BYTES } from "../src/main/offline-memory";
 import { Controller, type Platform } from "../src/main/controller";
 import { validateManifest, type GameManifest } from "../src/main/manifest";
 import { formatInvite } from "../src/shared/invite";
 import { setSink } from "../src/main/log";
 import { KeyStore } from "../src/main/keystore";
+import { PortableOfflineSave, OFFLINE_KEY_SLOT } from "../src/main/offline-save";
+import { offlineLayout } from "../src/main/offline-layout";
+import { type OfflineSaveRuntime } from "../src/main/offline-save";
 import type { SpawnFn } from "../src/main/launch";
-import type { Snapshot } from "../src/shared/types";
+import type { OfflineStatus, Snapshot } from "../src/shared/types";
 import { FakeContentServer, FakeMetagame, makeFiles, manifestFor, sha256, TEST_BUILD } from "./fakes";
 import { makeTestCert, type TestCert } from "./certs";
 
@@ -28,6 +32,7 @@ const RELAY_PORT = 62441;
 const BUSY_RELAY_PORT = 62442;
 const SWAP_PORT = 62443;
 const PRIVATE_PORT = 62444;
+const OFFLINE_PORT = 62445;
 const ASSETS = path.resolve(__dirname, "..", "..", "assets");
 const EXE = "Archon/Binaries/Win64/Fake-Game.exe";
 
@@ -37,6 +42,7 @@ let gateway: https.Server;
 let meta: FakeMetagame;
 let content: FakeContentServer;
 let gatewayRequests: string[] = [];
+let deviceBlocked = false;
 const files = makeFiles();
 const manifest: GameManifest = (() => {
   const r = validateManifest(manifestFor(files), TEST_BUILD, false);
@@ -55,10 +61,14 @@ function temp(prefix: string): string {
 before(async () => {
   cert = makeTestCert();
   other = makeTestCert();
-  meta = new FakeMetagame({ name: "Friday Hunts", validCodes: new Set(["ABCD-EFGH-JKLM", "SECOND-CODE", "THIRD-CODE", "FOURTH-CODE", "FIFTH-CODE", "SIXTH-CODE", "EXPOSURE-CODE", "EXISTING-CODE", "PICKED-CODE"]) });
+  meta = new FakeMetagame({ name: "Friday Hunts", validCodes: new Set(["ABCD-EFGH-JKLM", "SECOND-CODE", "THIRD-CODE", "FOURTH-CODE", "FIFTH-CODE", "SIXTH-CODE", "EXPOSURE-CODE", "GAMELANG-CODE", "CONSOLE-CODE", "EXISTING-CODE", "PICKED-CODE", "SAVED-CODE", "DR-" + "a1".repeat(18), "DR-" + "b2".repeat(18)]) });
   content = new FakeContentServer({ key: "unused", files });
   gateway = https.createServer({ cert: cert.certPem, key: cert.keyPem }, (req, res) => {
     gatewayRequests.push(`${req.method} ${req.url}`);
+    if (req.url === '/undaunted/api/DeviceSignals' && deviceBlocked) {
+      req.resume(); res.writeHead(403, {'content-type':'application/json'});
+      res.end(JSON.stringify({error:'device_banned',reason:'Test restriction'})); return;
+    }
     if ((req.url ?? "").startsWith("/content/")) {
       // The content server accepts any key the metagame knows.
       const key = req.headers["x-undaunted-user-api-key"];
@@ -83,8 +93,9 @@ after(async () => {
 interface Harness {
   c: Controller;
   last: () => Snapshot;
-  spawns: { exe: string; args: string[]; cwd: string }[];
+  spawns: { exe: string; args: string[]; cwd: string; env?: NodeJS.ProcessEnv }[];
   child: () => EventEmitter | null;
+  offlineStatuses: OfflineStatus[];
   configDir: string;
   installDir: string;
   userData: string;
@@ -92,14 +103,17 @@ interface Harness {
 
 // userDataDir: reuse another harness's settings and keys (the launcher opened again).
 // chooseFolder: what the folder dialog answers (default: cancelled).
-function harness(relayPort = RELAY_PORT, userDataDir?: string, chooseFolder: Platform["chooseFolder"] = async () => null): Harness {
+function harness(relayPort = RELAY_PORT, userDataDir?: string, chooseFolder: Platform["chooseFolder"] = async () => null, startOfflineStack?: Platform["startOfflineStack"], onChild?: (child: EventEmitter) => void, documentsDir?: string, offlineFreeMemory?: () => number, offlineSave?: OfflineSaveRuntime,): Harness {
   let snap: Snapshot | null = null;
   const spawns: Harness["spawns"] = [];
+  const offlineStatuses: OfflineStatus[] = [];
   let child: EventEmitter | null = null;
-  const fakeSpawn = ((exe: string, args: string[], opts: { cwd: string }) => {
-    spawns.push({ exe, args, cwd: opts.cwd });
-    child = new EventEmitter();
+  const fakeSpawn = ((exe: string, args: string[], opts: { cwd: string; env?: NodeJS.ProcessEnv }) => {
+    spawns.push({ exe, args, cwd: opts.cwd, env: opts.env });
+    // Requests below simulate the game from this test process.
+    child = Object.assign(new EventEmitter(), { pid: process.pid });
     const c = child;
+    onChild?.(c);
     setImmediate(() => c.emit("spawn"));
     return child;
   }) as unknown as SpawnFn;
@@ -107,7 +121,9 @@ function harness(relayPort = RELAY_PORT, userDataDir?: string, chooseFolder: Pla
   const installDir = temp("dr-ctl-game-");
   const configDir = temp("dr-ctl-cfg-");
   const p: Platform = {
+    collectDeviceSignals: async () => ({}),
     userDataDir: userData,
+    documentsDir,
     resourcesDir: ASSETS,
     defaultInstallDir: installDir,
     appVersion: "0.0.0-test",
@@ -131,14 +147,18 @@ function harness(relayPort = RELAY_PORT, userDataDir?: string, chooseFolder: Pla
       snap = s;
     },
     emitProgress: () => undefined,
+    emitOfflineStatus: (status) => {offlineStatuses.push(status);},
     findTailscale: () => null,
     findRunningClients: async () => [],
     runtimeFilesExist: () => true,
+    startOfflineStack,
+    offlineFreeMemory,
+    offlineSave,
 
     spawn: fakeSpawn,
   };
   const c = new Controller(p);
-  return { c, last: () => snap ?? c.snapshot(), spawns, child: () => child, configDir, installDir, userData };
+  return { c, last: () => snap ?? c.snapshot(), spawns, child: () => child, configDir, installDir, userData, offlineStatuses, };
 }
 
 function invite(fp: string, code = "ABCD-EFGH-JKLM"): string {
@@ -158,7 +178,7 @@ function get(port: number, p: string): Promise<{ status: number; body: string }>
 }
 
 test("public mode end to end: join, register, install, play through the relay, game exit", async () => {
-  const hx = harness();
+  const hx = harness(RELAY_PORT, undefined, undefined, undefined, undefined, undefined, () => { throw new Error("Online must not query Offline memory"); });
   await hx.c.init();
   assert.equal(hx.last().phase, "join");
 
@@ -192,6 +212,13 @@ test("public mode end to end: join, register, install, play through the relay, g
   for (const dll of ["dxgi.dll", "UndauntedInternalServer.dll"]) assert.ok(existsSync(path.join(hx.installDir, "Archon", "Binaries", "Win64", dll)), dll);
   assert.ok(gatewayRequests.some((r) => r.startsWith("GET /content/v1/files/")), "files came through the gateway");
 
+  deviceBlocked = true;
+  try {
+    const denied = await hx.c.play();
+    assert.equal(denied.ok, false);
+    assert.equal(hx.spawns.length, 0);
+    assert.equal(hx.c.relayActive, false);
+  } finally { deviceBlocked = false; }
   const played = await hx.c.play();
   assert.deepEqual(played, { ok: true });
   s = hx.last();
@@ -240,6 +267,105 @@ test("public mode end to end: join, register, install, play through the relay, g
   await hx.c.shutdown();
 });
 
+test("game language: automatic by default, stored when chosen, an unknown value changes nothing, sent as -epiclocale at PLAY", async () => {
+  const hx = harness();
+  await hx.c.init();
+  assert.deepEqual(await hx.c.submitInvite(invite(cert.fingerprint, "GAMELANG-CODE")), { ok: true });
+  assert.deepEqual(await hx.c.register("GameLang_1"), { ok: true, username: "GameLang_1" });
+  assert.deepEqual(await hx.c.startInstall(), { ok: true });
+  assert.equal(hx.last().settings.gameLanguage, "auto");
+
+  assert.equal((await hx.c.setSettings({ gameLanguage: "es-ES" })).gameLanguage, "es-ES");
+  assert.equal((await hx.c.setSettings({ gameLanguage: "xx-XX" } as never)).gameLanguage, "es-ES", "an unknown value is ignored");
+  assert.equal(JSON.parse(readFileSync(path.join(hx.userData, "settings.json"), "utf8")).gameLanguage, "es-ES");
+
+  assert.deepEqual(await hx.c.play(), { ok: true });
+  assert.ok(hx.spawns.at(-1)!.args.includes("-epiclocale=es-ES"), hx.spawns.at(-1)!.args.join(" "));
+  hx.child()!.emit("exit", 0);
+  await new Promise((r) => setTimeout(r, 100));
+  await hx.c.shutdown();
+});
+
+test("log window: hidden by default; when shown, the game gets DR_SHOW_CONSOLE=1 at PLAY", async () => {
+  const hx = harness();
+  await hx.c.init();
+  assert.deepEqual(await hx.c.submitInvite(invite(cert.fingerprint, "CONSOLE-CODE")), { ok: true });
+  assert.deepEqual(await hx.c.register("Console_1"), { ok: true, username: "Console_1" });
+  assert.deepEqual(await hx.c.startInstall(), { ok: true });
+  assert.equal(hx.last().settings.showConsole, false);
+
+  assert.deepEqual(await hx.c.play(), { ok: true });
+  assert.equal(hx.spawns.at(-1)!.env?.DR_SHOW_CONSOLE, undefined, "hidden unless asked for");
+  hx.child()!.emit("exit", 0);
+  await new Promise((r) => setTimeout(r, 100));
+
+  assert.equal((await hx.c.setSettings({ showConsole: true })).showConsole, true);
+  assert.equal(JSON.parse(readFileSync(path.join(hx.userData, "settings.json"), "utf8")).showConsole, true);
+  assert.deepEqual(await hx.c.play(), { ok: true });
+  assert.equal(hx.spawns.at(-1)!.env?.DR_SHOW_CONSOLE, "1");
+  hx.child()!.emit("exit", 0);
+  await new Promise((r) => setTimeout(r, 100));
+  await hx.c.shutdown();
+});
+
+test("saved servers: a server joined before comes back with one click, keeping its account, and can be removed from the list", async () => {
+  const hx = harness();
+  try {
+    await hx.c.init();
+    assert.deepEqual(hx.c.snapshot().savedServers, []);
+    assert.deepEqual(await hx.c.submitInvite(invite(cert.fingerprint, "SAVED-CODE")), { ok: true });
+    assert.deepEqual(await hx.c.register("Saved_1"), { ok: true, username: "Saved_1" });
+    const [entry] = hx.c.snapshot().savedServers;
+    assert.deepEqual([entry.name, entry.current, entry.username], ["Friday Hunts", true, "Saved_1"]);
+    assert.deepEqual(await hx.c.removeSavedServer(entry.id), { ok: false, error: { code: "busy" } }, "the current server stays");
+
+    assert.deepEqual(await hx.c.forgetServer(), { ok: true });
+    assert.equal(hx.c.snapshot().server, null);
+    assert.deepEqual(hx.c.snapshot().savedServers.map((sv) => [sv.id, sv.current]), [[entry.id, false]]);
+
+    assert.deepEqual(await hx.c.switchServer("0".repeat(24)), { ok: false, error: { code: "invite_invalid_format" } });
+    assert.deepEqual(await hx.c.switchServer(entry.id), { ok: true });
+    const back = hx.c.snapshot();
+    assert.deepEqual([back.server?.host, back.server?.fingerprint, back.account.hasKey, back.server?.hasPendingInvite], ["127.0.0.1", cert.fingerprint, true, false]);
+
+    assert.deepEqual(await hx.c.forgetServer(), { ok: true });
+    assert.deepEqual(await hx.c.removeSavedServer(entry.id), { ok: true });
+    assert.deepEqual(hx.c.snapshot().savedServers, []);
+  } finally {
+    await hx.c.shutdown();
+  }
+});
+
+test("an invite typed on the Register page, in any form, is the code that gets sent", async () => {
+  const hx = harness();
+  await hx.c.init();
+  try {
+    // Joined without a usable code: a bare code, even inside a pasted message, fixes it.
+    assert.deepEqual(await hx.c.submitInvite(invite(cert.fingerprint, "OLD-CODE-0001")), { ok: true });
+    assert.deepEqual(await hx.c.setInviteCode("my invite is DR-" + "a1".repeat(18) + " thanks"), { ok: true });
+    assert.equal(hx.c.snapshot().server?.hasPendingInvite, true);
+    assert.deepEqual(await hx.c.setInviteCode("not a code!"), { ok: false, error: { code: "invite_invalid_format", detail: "code" } });
+    assert.deepEqual(await hx.c.register("Typed_Code"), { ok: true, username: "Typed_Code" });
+    assert.equal(meta.registrations.at(-1)?.code, "DR-" + "a1".repeat(18));
+    assert.equal(hx.c.snapshot().server?.hasPendingInvite, false, "spent with the registration");
+  } finally {
+    await hx.c.shutdown();
+  }
+});
+
+test("a whole Discord message with the invite link inside is accepted as an invite", async () => {
+  const hx = harness();
+  await hx.c.init();
+  try {
+    const message = ["```", invite(cert.fingerprint, "DR-" + "b2".repeat(18)), "```", "Copy the entire invite above into the Join box"].join(String.fromCharCode(10));
+    assert.deepEqual(await hx.c.submitInvite(message), { ok: true });
+    assert.deepEqual(await hx.c.register("From_Message"), { ok: true, username: "From_Message" });
+    assert.equal(meta.registrations.at(-1)?.code, "DR-" + "b2".repeat(18));
+  } finally {
+    await hx.c.shutdown();
+  }
+});
+
 test("auto exposure: off by default; Basic is stored and written at the next PLAY, an unknown value changes nothing, Game default removes it", async () => {
   const hx = harness();
   await hx.c.init();
@@ -284,6 +410,621 @@ function existingGame(): { base: string; game: string } {
   }
   return { base, game };
 }
+
+function installFakeGame(dir: string): void {
+  for (const f of files) {
+    const target = path.join(dir, ...f.path.split("/"));
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, f.data);
+  }
+}
+
+test("offline play registers once, stores its key and reuses the same account", async () => {
+  const documents = temp("dr-offline-documents-");
+  const local = new FakeMetagame({ name: "Local", registration: "OPEN", contentPort: null });
+  await local.start(OFFLINE_PORT);
+
+  let starts = 0;
+  let stops = 0;
+
+  const hx = harness(
+      RELAY_PORT,
+      undefined,
+      async () => null,
+      async (onPhase) => {
+        starts++;
+        onPhase("starting-metagame");
+        onPhase("starting-deploy");
+
+        return {
+          endpoint: { host: "127.0.0.1", port: OFFLINE_PORT, pin: null },
+          stop: async () => { stops++; },
+        };
+      },
+      undefined,
+      documents,
+      () => OFFLINE_REQUIRED_AVAILABLE_BYTES,
+  );
+
+  try {
+    installFakeGame(hx.installDir);
+    await hx.c.init();
+
+    assert.deepEqual(await hx.c.startOffline(), { ok: true });
+    assert.equal(hx.c.offlineStatus().phase, "needs-username");
+    assert.equal(starts, 1);
+    assert.equal(stops, 0, "the local stack stays alive while waiting for a username");
+    assert.equal(local.registrations.length, 0);
+    assert.equal(hx.spawns.length, 0);
+
+    assert.deepEqual(await hx.c.startOffline("Offline_1"), { ok: true });
+    assert.equal(starts, 1, "registration continues on the existing local stack");
+    assert.equal(hx.c.offlineStatus().phase, "running");
+    assert.equal(local.registrations.length, 1);
+    assert.equal(local.registrations[0].username, "Offline_1");
+    assert.equal(existsSync(path.join(documents, "Dauntless Revived", "Account Keys")), false, "offline keys stay in encrypted userData storage");
+    assert.equal(hx.spawns.length, 1);
+
+    const firstArgs = hx.spawns[0].args;
+    assert.equal(firstArgs[0], `127.0.0.1:${OFFLINE_PORT}`);
+    assert.match(firstArgs[1], /^-AUTH_PASSWORD=UUK_[0-9a-f]{48}$/);
+    const firstKey = firstArgs[1];
+
+    assert.deepEqual(
+        await hx.c.stopOffline(),
+        { ok: false, error: { code: "busy" } },
+        "stopOffline never tears the local stack down under a running game",
+    );
+    assert.equal(stops, 0);
+    assert.equal(hx.c.offlineStatus().phase, "running");
+
+    hx.child()!.emit("exit", 0);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(stops, 1, "the local stack stops when the offline game exits");
+    assert.equal(hx.c.offlineStatus().phase, "stopped");
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(stops, 1, "the local stack stops when the offline game exits");
+    assert.equal(hx.c.offlineStatus().phase, "stopped");
+
+    assert.deepEqual(await hx.c.startOffline(), { ok: true });
+    assert.equal(hx.c.offlineStatus().phase, "running");
+    assert.equal(local.registrations.length, 1, "the saved offline account is reused");
+    assert.equal(hx.spawns.length, 2);
+    assert.equal(hx.spawns[1].args[1], firstKey, "the same offline account key is reused");
+
+    hx.child()!.emit("exit", 0);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(stops, 2);
+    assert.deepEqual(
+        hx.offlineStatuses.map((status) => status.phase),
+        [
+          "preparing",
+          "starting-metagame",
+          "starting-deploy",
+          "needs-username",
+
+          "preparing",
+          "launching-game",
+          "running",
+          "stopping",
+          "stopped",
+
+          "preparing",
+          "starting-metagame",
+          "starting-deploy",
+          "launching-game",
+          "running",
+          "stopping",
+          "stopped",
+        ],
+    );
+  }
+  finally {
+    await hx.c.shutdown();
+    await local.stop();
+  }
+});
+
+test("packaged Offline memory admission rejects early, accepts the boundary, and permits retry", async () => {
+  const local = new FakeMetagame({ name: "Local", registration: "OPEN", contentPort: null });
+  await local.start(OFFLINE_PORT);
+  let available = OFFLINE_REQUIRED_AVAILABLE_BYTES - 1;
+  let queryFails = false;
+  let starts = 0;
+  let stops = 0;
+  const hx = harness(RELAY_PORT, undefined, undefined, async () => {
+    starts++;
+    return { endpoint: { host: "127.0.0.1", port: OFFLINE_PORT, pin: null }, stop: async () => { stops++; } };
+  }, undefined, undefined, () => { if (queryFails) throw new Error("query failed"); return available; });
+  try {
+    await hx.c.init();
+    const rejected = await hx.c.startOffline();
+    assert.deepEqual(rejected, { ok: false, error: { code: "offline_insufficient_memory", detail: "4608" } });
+    assert.equal(hx.c.offlineStatus().phase, "error");
+    assert.equal(hx.c.offlineStatus().error?.code, "offline_insufficient_memory");
+    assert.equal(starts, 0);
+    assert.equal(stops, 0);
+    assert.equal(hx.spawns.length, 0);
+    queryFails = true;
+    assert.equal((await hx.c.startOffline()).ok, false);
+    assert.equal(starts, 0);
+    queryFails = false;
+    for (const free of [OFFLINE_REQUIRED_AVAILABLE_BYTES, OFFLINE_REQUIRED_AVAILABLE_BYTES + 1]) {
+      available = free;
+      assert.deepEqual(await hx.c.startOffline(), { ok: true });
+      assert.equal(hx.c.offlineStatus().phase, "needs-username");
+      assert.deepEqual(await hx.c.stopOffline(), { ok: true });
+      assert.equal(hx.c.offlineStatus().phase, "stopped");
+    }
+    assert.equal(starts, 2);
+    assert.equal(stops, 2);
+  } finally {
+    await hx.c.shutdown();
+    await local.stop();
+  }
+  assert.equal(stops, 2, "shutdown must not find an orphan session");
+});
+
+test("portable-save operations own the normal Controller lock and shutdown waits for them", async () => {
+  let finish!: () => void;
+  let started!: () => void;
+  const arrived = new Promise<void>(resolve => { started = resolve; });
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  const runtime: OfflineSaveRuntime = {
+    recover: async () => {},
+    exportSave: async () => { started(); await gate; return { ok: true }; },
+    importSave: async () => ({ ok: true }),
+  };
+  const hx = harness(RELAY_PORT, undefined, undefined, undefined, undefined, undefined, undefined, runtime);
+  await hx.c.init();
+  const exporting = hx.c.exportOfflineSave("trusted-main-path.drsave");
+  await arrived;
+  for (const action of [hx.c.importOfflineSave("trusted-main-path.drsave"), hx.c.startOffline(), hx.c.play(), hx.c.repair()]) {
+    assert.deepEqual(await action, { ok: false, error: { code: "busy" } });
+  }
+  let closed = false;
+  const shutdown = hx.c.shutdown().then(() => { closed = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(closed, false);
+  finish();
+  assert.deepEqual(await exporting, { ok: true });
+  await shutdown;
+  assert.deepEqual(await hx.c.exportOfflineSave("trusted-main-path.drsave"), { ok: false, error: { code: "busy" } });
+});
+
+test("restored portable identity starts twice without registration; active game and stack refuse saves", async () => {
+  const fixtures = require(path.resolve("test/offline-save-fixture.cjs"));
+  const root = temp("dr-controller-portable-");
+  const source = path.join(root, "source"), destination = path.join(root, "destination"), resources = path.join(root, "resources");
+  mkdirSync(resources, { recursive: true }); mkdirSync(destination, { recursive: true });
+  const crypto = {
+    isAvailable: () => true,
+    encrypt: (plain: string) => Buffer.from("enc:" + Buffer.from(plain).toString("base64")),
+    decrypt: (data: Buffer) => Buffer.from(data.toString().slice(4), "base64").toString(),
+  };
+  const sourceLayout = offlineLayout(resources, source);
+  const identity = fixtures.fixture(sourceLayout.databasePath);
+  const sourceKeys = new KeyStore(path.join(source, "keys"), crypto);
+  await sourceKeys.save(OFFLINE_KEY_SLOT, identity.key);
+  const sourceSave = new PortableOfflineSave({ layout: sourceLayout, userData: source, keys: sourceKeys, database: fixtures.driver });
+  const archive = path.join(root, "save.drsave");
+  assert.deepEqual(await sourceSave.exportSave(archive), { ok: true });
+  const keys = new KeyStore(path.join(destination, "keys"), crypto);
+  const save = new PortableOfflineSave({ layout: offlineLayout(resources, destination), userData: destination, keys, database: fixtures.driver });
+  const local = new FakeMetagame({ name: "Local", registration: "OPEN", contentPort: null });
+  await local.start(OFFLINE_PORT);
+  const hx = harness(RELAY_PORT, destination, undefined, async () => ({ endpoint: { host: "127.0.0.1", port: OFFLINE_PORT, pin: null }, stop: async () => {} }), undefined, undefined, undefined, save);
+  try {
+    installFakeGame(hx.installDir);
+    await hx.c.init();
+    assert.deepEqual(await hx.c.importOfflineSave(archive), { ok: true });
+    const key = await keys.load(OFFLINE_KEY_SLOT);
+    assert.ok(key);
+    local.users.set(key, { username: identity.username, id: identity.userId });
+    for (let cycle = 0; cycle < 2; cycle++) {
+      assert.deepEqual(await hx.c.startOffline(), { ok: true });
+      assert.equal(hx.c.offlineStatus().phase, "running");
+      assert.equal(local.registrations.length, 0);
+      assert.deepEqual(await hx.c.exportOfflineSave(archive), { ok: false, error: { code: "busy" } });
+      assert.deepEqual(await hx.c.importOfflineSave(archive), { ok: false, error: { code: "busy" } });
+      hx.child()!.emit("exit", 0);
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  } finally { await hx.c.shutdown(); await local.stop(); }
+});
+
+test("starting and stopping Offline refuse save operations", async () => {
+  let continueStart!: () => void;
+  let continueStop!: () => void;
+  let started!: () => void;
+  const arrived = new Promise<void>(resolve => { started = resolve; });
+  const gate = new Promise<void>(resolve => { continueStart = resolve; });
+  const stopped = new Promise<void>(resolve => { continueStop = resolve; });
+  const fake: OfflineSaveRuntime = { recover: async () => {}, exportSave: async () => ({ ok: true }), importSave: async () => ({ ok: true }) };
+  const hx = harness(RELAY_PORT, undefined, undefined, async phase => {
+    phase("starting-metagame"); started(); await gate;
+    return { endpoint: { host: "127.0.0.1", port: OFFLINE_PORT, pin: null }, stop: () => stopped };
+  }, undefined, undefined, undefined, fake);
+  const start = hx.c.startOffline(); await arrived;
+  assert.deepEqual(await hx.c.exportOfflineSave("save.drsave"), { ok: false, error: { code: "busy" } });
+  await hx.c.stopOffline(); continueStart();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(await hx.c.importOfflineSave("save.drsave"), { ok: false, error: { code: "busy" } });
+  continueStop(); await start; await hx.c.shutdown();
+});
+
+test("stopOffline tears down a local stack waiting for a username", async () => {
+  const local = new FakeMetagame({
+    name: "Local",
+    registration: "OPEN",
+    contentPort: null,
+  });
+
+  await local.start(OFFLINE_PORT);
+
+  let starts = 0;
+  let stops = 0;
+
+  const hx = harness(
+      RELAY_PORT,
+      undefined,
+      async () => null,
+      async (onPhase) => {
+        starts++;
+        onPhase("starting-metagame");
+        onPhase("starting-deploy");
+
+        return {
+          endpoint: { host: "127.0.0.1", port: OFFLINE_PORT, pin: null },
+          stop: async () => { stops++; },
+        };
+      },
+  );
+
+  try {
+    await hx.c.init();
+
+    assert.deepEqual(await hx.c.startOffline(), { ok: true });
+    assert.equal(starts, 1);
+    assert.equal(stops, 0);
+
+    assert.deepEqual(await hx.c.stopOffline(), { ok: true });
+    assert.equal(stops, 1);
+    assert.equal(hx.c.offlineStatus().phase, "stopped");
+    assert.equal(hx.spawns.length, 0);
+  } finally {
+    await hx.c.shutdown();
+    await local.stop();
+  }
+});
+
+test("offline registration keeps the local stack alive after a username error", async () => {
+  const local = new FakeMetagame({
+    name: "Local",
+    registration: "OPEN",
+    contentPort: null,
+    existingUsers: new Map([
+      ["taken", "UUK_existing"],
+    ]),
+  });
+
+  await local.start(OFFLINE_PORT);
+
+  let starts = 0;
+  let stops = 0;
+
+  const hx = harness(
+      RELAY_PORT,
+      undefined,
+      async () => null,
+      async (onPhase) => {
+        starts++;
+        onPhase("starting-metagame");
+        onPhase("starting-deploy");
+
+        return {
+          endpoint: { host: "127.0.0.1", port: OFFLINE_PORT, pin: null },
+          stop: async () => { stops++; },
+        };
+      },
+  );
+
+  try {
+    installFakeGame(hx.installDir);
+    await hx.c.init();
+
+    assert.deepEqual(await hx.c.startOffline(), { ok: true });
+    assert.equal(hx.c.offlineStatus().phase, "needs-username");
+    assert.equal(starts, 1);
+    assert.equal(stops, 0);
+
+    assert.deepEqual(
+        await hx.c.startOffline("Taken"),
+        { ok: false, error: { code: "username_taken" } },
+    );
+
+    assert.deepEqual(
+        hx.c.offlineStatus(),
+        {
+          phase: "needs-username",
+          error: { code: "username_taken" },
+        },
+    );
+
+    assert.equal(starts, 1, "a rejected username must not restart the local stack");
+    assert.equal(stops, 0, "a rejected username must not stop the local stack");
+    assert.equal(hx.spawns.length, 0, "Dauntless must not launch with a rejected username");
+
+    assert.deepEqual(await hx.c.startOffline("FreshSlayer"), { ok: true });
+
+    assert.equal(starts, 1, "the accepted username continues on the same local stack");
+    assert.equal(stops, 0);
+    assert.equal(local.registrations.length, 1);
+    assert.equal(local.registrations[0].username, "FreshSlayer");
+    assert.equal(hx.c.offlineStatus().phase, "running");
+    assert.equal(hx.spawns.length, 1);
+
+    hx.child()!.emit("exit", 0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    assert.equal(stops, 1);
+    assert.equal(hx.c.offlineStatus().phase, "stopped");
+  } finally {
+    await hx.c.shutdown();
+    await local.stop();
+  }
+});
+
+test("stopOffline cancels a local stack while it is still starting", async () => {
+  let starts = 0;
+  let stops = 0;
+  let releaseStart!: () => void;
+
+  const startGate = new Promise<void>((resolve) => {
+    releaseStart = resolve;
+  });
+
+  const hx = harness(
+      RELAY_PORT,
+      undefined,
+      async () => null,
+      async (onPhase) => {
+        starts++;
+        onPhase("starting-metagame");
+
+        // Keep startup deliberately suspended here so stopOffline can race it.
+        await startGate;
+
+        onPhase("starting-deploy");
+
+        return {
+          endpoint: { host: "127.0.0.1", port: OFFLINE_PORT, pin: null },
+          stop: async () => { stops++; },
+        };
+      },
+  );
+
+  try {
+    await hx.c.init();
+
+    const starting = hx.c.startOffline();
+
+    // Let startOffline reach the deliberately suspended stack startup.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(hx.c.offlineStatus().phase, "starting-metagame");
+    assert.equal(starts, 1);
+    assert.equal(stops, 0);
+
+    assert.deepEqual(await hx.c.stopOffline(), { ok: true });
+    assert.equal(hx.c.offlineStatus().phase, "stopping");
+    assert.equal(stops, 0, "the stack session does not exist yet");
+
+    // Allow startOfflineStack to finish. startOffline must notice the pending
+    // cancellation before touching the account or launching Dauntless.
+    releaseStart();
+
+    assert.deepEqual(await starting, { ok: true });
+    assert.equal(stops, 1, "the newly created stack is immediately released");
+    assert.equal(hx.c.offlineStatus().phase, "stopped");
+    assert.equal(hx.spawns.length, 0, "Dauntless must never launch after cancellation");
+
+    assert.deepEqual(
+        hx.offlineStatuses.map((status) => status.phase),
+        [
+          "preparing",
+          "starting-metagame",
+          "stopping",
+          "stopped",
+        ],
+    );
+  } finally {
+    releaseStart();
+    await hx.c.shutdown();
+  }
+});
+
+test("shutdown waits for an offline stack that is still starting", async () => {
+  let stops = 0;
+  let releaseStart!: () => void;
+  let reachedStart!: () => void;
+
+  const startGate = new Promise<void>((resolve) => {
+    releaseStart = resolve;
+  });
+
+  const reached = new Promise<void>((resolve) => {
+    reachedStart = resolve;
+  });
+
+  const hx = harness(
+      RELAY_PORT,
+      undefined,
+      async () => null,
+      async (onPhase) => {
+        onPhase("starting-metagame");
+        reachedStart();
+
+        // Keep startup pending while shutdown begins.
+        await startGate;
+
+        onPhase("starting-deploy");
+
+        return {
+          endpoint: { host: "127.0.0.1", port: OFFLINE_PORT, pin: null },
+          stop: async () => { stops++; },
+        };
+      },
+  );
+
+  try {
+    await hx.c.init();
+
+    const starting = hx.c.startOffline();
+    await reached;
+
+    assert.equal(hx.c.offlineStatus().phase, "starting-metagame");
+
+    let shutdownFinished = false;
+    const shuttingDown = hx.c.shutdown().then(() => {
+      shutdownFinished = true;
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(
+        shutdownFinished,
+        false,
+        "shutdown must wait for the in-flight offline startup",
+    );
+
+    assert.equal(hx.c.offlineStatus().phase, "stopping");
+
+    releaseStart();
+
+    await Promise.all([starting, shuttingDown]);
+
+    assert.equal(stops, 1, "the stack returned during shutdown is stopped exactly once");
+    assert.equal(hx.spawns.length, 0, "Dauntless must never launch during shutdown");
+    assert.equal(hx.c.offlineStatus().phase, "stopped");
+
+    assert.deepEqual(
+        hx.offlineStatuses.map((status) => status.phase),
+        [
+          "preparing",
+          "starting-metagame",
+          "stopping",
+          "stopped",
+        ],
+    );
+  } finally {
+    releaseStart();
+    await hx.c.shutdown();
+  }
+});
+
+test("offline play does not return to running when the game exits during launch", async () => {
+  const local = new FakeMetagame({
+    name: "Local",
+    registration: "OPEN",
+    contentPort: null,
+  });
+
+  await local.start(OFFLINE_PORT);
+
+  let stops = 0;
+
+  const hx = harness(
+      RELAY_PORT,
+      undefined,
+      async () => null,
+      async (onPhase) => {
+        onPhase("starting-metagame");
+        onPhase("starting-deploy");
+
+        return {
+          endpoint: { host: "127.0.0.1", port: OFFLINE_PORT, pin: null },
+          stop: async () => { stops++; },
+        };
+      },
+      (child) => {
+        queueMicrotask(() => {
+          child.once("spawn", () => child.emit("exit", 0));
+        });
+      },
+  );
+
+  try {
+    installFakeGame(hx.installDir);
+    await hx.c.init();
+
+    assert.deepEqual(await hx.c.startOffline(), { ok: true });
+    assert.equal(hx.c.offlineStatus().phase, "needs-username");
+
+    assert.deepEqual(await hx.c.startOffline("QuickExit"), { ok: true });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    assert.equal(hx.spawns.length, 1);
+    assert.equal(stops, 1);
+    assert.equal(hx.c.offlineStatus().phase, "stopped");
+
+    assert.deepEqual(
+        hx.offlineStatuses.map((status) => status.phase),
+        [
+          "preparing",
+          "starting-metagame",
+          "starting-deploy",
+          "needs-username",
+          "preparing",
+          "launching-game",
+          "stopping",
+          "stopped",
+        ],
+    );
+  } finally {
+    await hx.c.shutdown();
+    await local.stop();
+  }
+});
+
+test("online play is blocked while an offline stack is waiting for a username", async () => {
+  let stops = 0;
+
+  const hx = harness(
+      RELAY_PORT,
+      undefined,
+      async () => null,
+      async (onPhase) => {
+        onPhase("starting-metagame");
+        onPhase("starting-deploy");
+
+        return {
+          endpoint: { host: "127.0.0.1", port: OFFLINE_PORT, pin: null },
+          stop: async () => { stops++; },
+        };
+      },
+  );
+
+  try {
+    await hx.c.init();
+
+    assert.deepEqual(await hx.c.startOffline(), { ok: true });
+    assert.equal(hx.c.offlineStatus().phase, "needs-username");
+
+    assert.deepEqual(
+        await hx.c.play(),
+        { ok: false, error: { code: "busy" } },
+    );
+
+    assert.equal(hx.spawns.length, 0);
+    assert.equal(stops, 0, "online play must not tear down the offline stack");
+    assert.equal(hx.c.offlineStatus().phase, "needs-username");
+  } finally {
+    await hx.c.stopOffline();
+    await hx.c.shutdown();
+  }
+});
 
 test("an existing BaseGame144 folder, pasted, is checked in place and launched from its Dauntless folder", async () => {
   const hx = harness();

@@ -217,3 +217,37 @@ test("host and fingerprint rules", () => {
   assert.equal(isValidFingerprint(""), false);
   assert.equal(isValidFingerprint(null), false);
 });
+
+// ------------------------------------------------------------------ pasted text
+
+import { extractInviteCode, findInviteLink, looksLikeInvite } from "../src/shared/invite";
+
+const BOT_CODE = "DR-" + "ab12cd34".repeat(4) + "ef56";
+
+test("extractInviteCode: a bare code, a code in backticks and a code inside a message", () => {
+  assert.equal(extractInviteCode(BOT_CODE), BOT_CODE);
+  assert.equal(extractInviteCode("`" + BOT_CODE + "`"), BOT_CODE);
+  assert.equal(extractInviteCode(`Here is my invite ${BOT_CODE} please help`), BOT_CODE);
+  assert.equal(extractInviteCode("ABCD-1234"), "ABCD-1234");
+});
+
+test("extractInviteCode: a full link, with Discord text around it", () => {
+  const link = `dauntless-revived://join?v=2&mode=public&host=203.0.113.10&port=443&fp=${FP}&code=${BOT_CODE}&name=Dauntless%20Revived`;
+  assert.equal(extractInviteCode(link), BOT_CODE);
+  assert.equal(extractInviteCode("```\n" + link + "\n```\nCopy the entire invite above"), BOT_CODE);
+  assert.equal(findInviteLink("```\n" + link + "\n```\nCopy"), link);
+});
+
+test("extractInviteCode: ordinary text and account keys are not invites", () => {
+  assert.equal(extractInviteCode("hello there"), null);
+  assert.equal(extractInviteCode(""), null);
+  assert.equal(extractInviteCode("UUK_" + "a".repeat(48)), null);
+  assert.equal(extractInviteCode(42), null);
+});
+
+test("looksLikeInvite: links and DR- codes only", () => {
+  assert.equal(looksLikeInvite(BOT_CODE), true);
+  assert.equal(looksLikeInvite(goodV2), true);
+  assert.equal(looksLikeInvite("UUK_" + "a".repeat(48)), false);
+  assert.equal(looksLikeInvite("ABCD-1234"), false);
+});

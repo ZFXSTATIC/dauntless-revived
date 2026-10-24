@@ -8,6 +8,7 @@
 //   certificate that does not match stops the whole job before any request is sent.
 
 import http from "node:http";
+import https from "node:https";
 import { createHash, type Hash } from "node:crypto";
 import { createReadStream, createWriteStream, promises as fsp, type WriteStream } from "node:fs";
 import path from "node:path";
@@ -77,6 +78,7 @@ export interface DownloadProgress {
 
 export interface DownloadOptions {
   endpoint: Endpoint;
+  downloadBaseUrl?: string;
   key: string;
   installDir: string;
   files: ManifestFile[];
@@ -88,6 +90,15 @@ export interface DownloadOptions {
   onProgress?: (p: DownloadProgress) => void;
   onFileVerified?: (f: ManifestFile) => void;
   onRetry?: (f: ManifestFile, attempt: number, reason: string) => void;
+}
+
+// Game hashes remain pinned in the launcher even when the host advertises a CDN.
+export function contentDownloadBase(raw: unknown): string | undefined {
+  if (!raw || typeof raw !== "object" || !("downloadBaseUrl" in raw) || raw.downloadBaseUrl === undefined) return undefined;
+  if (typeof raw.downloadBaseUrl !== "string") throw new Error("Invalid content download URL");
+  const url = new URL(raw.downloadBaseUrl);
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) throw new Error("Invalid content download URL");
+  return url.href.replace(/\/+$/, "") + "/";
 }
 
 export function fileUrlPath(rel: string): string {
@@ -207,6 +218,7 @@ export class DownloadJob {
   private resumeWaiters: (() => void)[] = [];
   private progressTimer: NodeJS.Timeout | null = null;
   private readonly agent: http.Agent;
+  private readonly downloadBaseUrl?: string;
   private readonly concurrency: number;
   private readonly maxAttempts: number;
   private readonly backoff: (attempt: number) => number;
@@ -222,7 +234,10 @@ export class DownloadJob {
     this.queue = [...opts.files].sort((a, b) => b.size - a.size);
     this.totalBytes = opts.files.reduce((s, f) => s + f.size, 0);
     const target = pinnedTarget(opts.endpoint);
-    this.agent = target
+    this.downloadBaseUrl = contentDownloadBase({ downloadBaseUrl: opts.downloadBaseUrl });
+    this.agent = this.downloadBaseUrl
+      ? new https.Agent({ keepAlive: true, maxSockets: this.concurrency })
+      : target
       ? new PinnedAgent(target, { keepAlive: true, maxSockets: this.concurrency })
       : new http.Agent({ keepAlive: true, maxSockets: this.concurrency });
   }
@@ -440,15 +455,18 @@ export class DownloadJob {
     replaceHash: (h: Hash) => void,
   ): Promise<number> {
     const signal = slot.controller.signal;
-    const url = endpointUrl(this.opts.endpoint, fileUrlPath(file.path));
+    const cdn = this.downloadBaseUrl !== undefined;
+    const url = cdn
+      ? new URL(file.path.split("/").map(encodeURIComponent).join("/"), this.downloadBaseUrl)
+      : endpointUrl(this.opts.endpoint, fileUrlPath(file.path));
     const headers: Record<string, string> = {
-      host: hostHeader(this.opts.endpoint),
-      "x-undaunted-user-api-key": this.opts.key,
+      // Never send account credentials or the gateway Host header to the CDN.
+      ...(cdn ? {} : { host: hostHeader(this.opts.endpoint), "x-undaunted-user-api-key": this.opts.key }),
       "accept-encoding": "identity",
     };
     if (offset > 0) {
       headers.range = `bytes=${offset}-`;
-      headers["if-range"] = `"${file.sha256}"`;
+      if (!cdn) headers["if-range"] = `"${file.sha256}"`;
     }
 
     return new Promise<number>((resolve, reject) => {
@@ -471,7 +489,7 @@ export class DownloadJob {
       const onAbort = () => finish(new Interrupted());
       signal.addEventListener("abort", onAbort, { once: true });
 
-      const req = http.request(url, { method: "GET", headers, agent: this.agent });
+      const req = (cdn ? https : http).request(url, { method: "GET", headers, agent: this.agent });
       armStall();
       req.on("error", (e) => {
         if (signal.aborted) return finish(new Interrupted());
@@ -507,7 +525,8 @@ export class DownloadJob {
           return finish(new AttemptError(true, `HTTP ${status}`));
         }
         const tag = etagHash(res.headers.etag);
-        if (tag !== null && tag !== file.sha256) {
+        // R2 ETags are MD5/multipart identifiers, not our manifest SHA-256.
+        if (!cdn && tag !== null && tag !== file.sha256) {
           res.resume();
           return finish(new AttemptError(false, "server file differs", new DownloadError("file_different_on_server", file.path)));
         }

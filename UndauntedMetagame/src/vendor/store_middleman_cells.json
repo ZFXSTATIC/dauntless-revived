@@ -1,0 +1,169 @@
+{
+  "_comment": [
+    "Conservative 1.4.4-era Middleman weekly Aetherdust pool.",
+    "Catalog ids use the classic cell ids retained by the later recovered catalogue; only cell families known from the pre-Reforged perk set are included.",
+    "The service generates +1 (UC, 40 dust) and +2 (R, 100 dust) offers and rotates three families each Thursday at 18:00 UTC."
+  ],
+  "families": [
+    {
+      "id": "CONVERT_PART_TO_EXPOSE",
+      "name": "Acidic"
+    },
+    {
+      "id": "LANTERNCHARGE_PCT",
+      "name": "Aetheric Attunement"
+    },
+    {
+      "id": "DODGE_COST",
+      "name": "Agility"
+    },
+    {
+      "id": "MYBREAK_REGEN",
+      "name": "Assassin's Vigour"
+    },
+    {
+      "id": "EXPOSE_FLAT",
+      "name": "Barbed"
+    },
+    {
+      "id": "PARTBREAK_FLAT",
+      "name": "Bladestorm"
+    },
+    {
+      "id": "REDUCE_WOUNDED",
+      "name": "Bloodless"
+    },
+    {
+      "id": "STAM_REGEN_FLAT",
+      "name": "Conditioning"
+    },
+    {
+      "id": "LANTERN_USE_ATKSPD",
+      "name": "Conduit"
+    },
+    {
+      "id": "CRIT_CHANCE",
+      "name": "Cunning"
+    },
+    {
+      "id": "OBJECT_BREAKER",
+      "name": "Deconstruction"
+    },
+    {
+      "id": "STAM_MAX",
+      "name": "Endurance"
+    },
+    {
+      "id": "METER_GAIN",
+      "name": "Energized"
+    },
+    {
+      "id": "DODGE_IFRAME",
+      "name": "Evasion"
+    },
+    {
+      "id": "PDODGE_ATKSPD",
+      "name": "Evasive Fury"
+    },
+    {
+      "id": "REDUCE_ONFIRE",
+      "name": "Fireproof"
+    },
+    {
+      "id": "DODGE_SPD_UP",
+      "name": "Fleet Footed"
+    },
+    {
+      "id": "DONTGETHIT_SHIELD",
+      "name": "Fortress"
+    },
+    {
+      "id": "SHARE_SHIELD",
+      "name": "Guardian"
+    },
+    {
+      "id": "REDUCE_SHOCKED",
+      "name": "Insulated"
+    },
+    {
+      "id": "STAGGER_PCT",
+      "name": "Knockout King"
+    },
+    {
+      "id": "REVIVE_BETTER",
+      "name": "Medic"
+    },
+    {
+      "id": "VSSTAGGER_EXPOSE_FLAT",
+      "name": "Merciless"
+    },
+    {
+      "id": "PDODGE_STAMINA",
+      "name": "Nimble"
+    },
+    {
+      "id": "DMG_REDUX_CHANCE",
+      "name": "Nine Lives"
+    },
+    {
+      "id": "VSSTAGGER_BASEDMG",
+      "name": "Overpower"
+    },
+    {
+      "id": "VSRAGE_STAGGER_PCT",
+      "name": "Pacifier"
+    },
+    {
+      "id": "DONTGETHIT_DAMAGE",
+      "name": "Predator"
+    },
+    {
+      "id": "LOWHP_BASEDMG",
+      "name": "Rage"
+    },
+    {
+      "id": "VSRAGE_BASEDMG",
+      "name": "Ragehunter"
+    },
+    {
+      "id": "VSEXPOSED_BASEDMG",
+      "name": "Savagery"
+    },
+    {
+      "id": "PARTBREAK_PCT",
+      "name": "Sharpened"
+    },
+    {
+      "id": "REDUCE_SHELLSHOCKED",
+      "name": "Shellshock Resist"
+    },
+    {
+      "id": "ANYSTAGGER_REGEN",
+      "name": "Stunning Vigour"
+    },
+    {
+      "id": "PREVENT_STAGGER",
+      "name": "Sturdy"
+    },
+    {
+      "id": "OUTOFCOMBAT_MOVESPD",
+      "name": "Swift"
+    },
+    {
+      "id": "HEALTH_MAX",
+      "name": "Tough"
+    },
+    {
+      "id": "ANYEXPOSE_REGEN",
+      "name": "Vampiric"
+    },
+    {
+      "id": "REDUCE_CHILLED_AND_FROZEN",
+      "name": "Warmth"
+    },
+    {
+      "id": "STAGGER_FLAT",
+      "name": "Weighted Strikes"
+    }
+  ]
+}

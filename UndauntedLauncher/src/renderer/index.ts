@@ -4,39 +4,52 @@
 
 import { $, forceRender, githubMark, h, icon, renderRegion, type IconName } from "./dom";
 import partnerLogo from "./brand/eugamehost-partner.png";
+import newsBadge from "./brand/news-badge.svg";
 import { buildScene } from "./scene";
 import { isStringKey, translate, type StringKey } from "../shared/i18n";
 import { localized, PATRONS, PROJECT_PEOPLE, SOFTWARE, UPSTREAM_PEOPLE, type CreditPerson, type CreditRole } from "../shared/credits";
-import { parseInvite } from "../shared/invite";
+import { looksLikeInvite, parseInvite } from "../shared/invite";
 import { checkUsername, extractAccountKey } from "../shared/username";
 import { exposureKey, graphicsKey, primaryButton, shortFile, stepIndex, taskView, updateReason, whereKey } from "../shared/ui-model";
 import { formatBytes, formatDate, formatDuration, formatRunningTime } from "../shared/format";
 import { sortInstances, type InstanceKind, type ServerStatus, type StatusInstance } from "../shared/status";
-import { EXPOSURE_MODES, GRAPHICS_PRESETS, type Branding, type ExposureMode, type ExternalTarget, type GraphicsPreset, type LauncherError, type NewsItem, type Snapshot, type TaskProgress } from "../shared/types";
+import { EXPOSURE_MODES, GAME_LANGUAGES, GRAPHICS_PRESETS, LANGUAGES, type Branding, type ExposureMode, type ExternalTarget, type GameLanguage, type GraphicsPreset, type Language, type LauncherError, type NewsItem, type OfflinePhase, type OfflineStatus, type Snapshot, type TaskProgress } from "../shared/types";
 
-type View = "play" | "news" | "server" | "settings" | "partners" | "credits";
-const VIEWS: readonly View[] = ["play", "news", "server", "settings", "partners", "credits"];
+type View = "play" | "news" | "server" | "settings" | "partners" | "mods" | "credits";
+const VIEWS: readonly View[] = ["play", "news", "server", "settings", "partners", "mods", "credits"];
 type Modal =
   | { kind: "invite"; link: string; name: string; host: string; mode: "public" | "private"; fp: string | null }
   // A public invite whose certificate is not the one this PC's key for that server belongs to.
   | { kind: "cert_changed"; link: string; name: string; host: string; oldFp: string | null; newFp: string }
   | { kind: "logout" }
-  | { kind: "leave" };
+  | { kind: "leave" }
+  | { kind: "remove_server"; id: string; name: string }
+  | { kind: "offline_restore" };
 
 const api = window.launcher;
 const ART_URL = /^dr-art:\/\/bg\/[0-9a-f]{64}$/;
+const TIME_LOCALES: Record<Language, string> = { en: "en-GB", fi: "fi-FI", de: "de-DE", es: "es-ES", fr: "fr-FR", it: "it-IT", ja: "ja-JP", pt: "pt-BR", ru: "ru-RU" };
+const GAME_LANGUAGE_NAMES: Record<Exclude<GameLanguage, "auto">, string> = { "en-US": "English", "de-DE": "Deutsch", "es-ES": "Español", "fr-FR": "Français", "it-IT": "Italiano", "ja-JP": "日本語", "pt-BR": "Português (Brasil)", "ru-RU": "Русский" };
 
 const state = {
   snap: null as Snapshot | null,
   task: null as TaskProgress | null,
-  lang: "en" as "en" | "fi",
+  lang: "en" as Language,
   view: "play" as View,
   inviteText: "",
+  revealed: new Set<string>(), // streamer mode: the values shown with the eye, until the launcher closes
   username: "",
   keyFormOpen: false,
+  offline: { phase: "stopped" } as OfflineStatus, // the local runtime's last status
+  offlineView: false, // the Play page shows offline play instead of the online server
+  offlineName: "", // the first-run offline username being typed
+  playMenu: false, // the PLAY button's dropdown is open
+  offlineSaveNote: null as string | null, // the last backup or restore that worked, shown under the row
   existingFormOpen: false,
   news: [] as NewsItem[],
   newsSeen: false,
+  serverMenu: false, // the rail's server switcher is open
+  settingsTab: "game" as SettingsTab, // the Settings page's open tab
   branding: { backgrounds: [], accent: null } as Branding,
   extrasFor: "",
   extrasAt: 0,
@@ -74,6 +87,16 @@ const inviteInput = h("textarea", {
 });
 const inviteHint = h("div", { class: "hint", id: "invite-hint", "aria-live": "polite" });
 const invitePreview = h("div", { class: "preview", hidden: true });
+
+const registerInviteInput = h("input", {
+  class: "input",
+  id: "register-invite-input",
+  type: "text",
+  maxlength: 2048,
+  spellcheck: "false",
+  autocomplete: "off",
+  "data-fk": "register-invite",
+});
 
 const usernameInput = h("input", {
   class: "input input-big",
@@ -128,6 +151,12 @@ usernameInput.addEventListener("input", () => {
   state.username = usernameInput.value;
   updateUsernameFeedback();
   renderActionBar();
+});
+registerInviteInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    void onPrimary();
+  }
 });
 usernameInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
@@ -190,8 +219,8 @@ function updateInviteFeedback(): void {
         "div",
         { class: "preview-text" },
         h("div", { class: "preview-name" }, r.invite.name),
-        h("div", { class: "preview-host" }, `${r.invite.host}:${r.invite.port}`),
-        r.invite.fp ? h("div", { class: "preview-host mono" }, t("link_fingerprint", { fp: shortFingerprint(r.invite.fp) })) : null,
+        h("div", { class: "preview-host" }, secret(`${r.invite.host}:${r.invite.port}`, "invite-host")),
+        r.invite.fp ? h("div", { class: "preview-host mono" }, t("link_fingerprint", { fp: hideText(shortFingerprint(r.invite.fp)) })) : null,
       ),
       h("span", {}, modeBadge(r.invite.mode)),
     );
@@ -212,6 +241,62 @@ function updateUsernameFeedback(): void {
   else usernameHint.replaceChildren(tk(`reg_check_${check}`));
   if (check !== "ok" && state.username.length > 0) usernameInput.setAttribute("aria-invalid", "true");
   else usernameInput.removeAttribute("aria-invalid");
+}
+
+// ------------------------------------------------------------------ streamer mode
+
+// Streamer mode keeps what could identify a server or the PC off the screen: addresses, certificate
+// fingerprints, the invite text, the install folder (it holds the Windows user name) and other
+// players' names. A value that the player may need gets an eye button to show it for a moment.
+function streamer(): boolean {
+  return state.snap?.settings.streamerMode === true;
+}
+
+function hideText(text: string): string {
+  return streamer() ? "\u2022\u2022\u2022\u2022\u2022\u2022" : text;
+}
+
+// A hidden value is never on screen: it is swapped for random letters and digits of the same length,
+// and that filler is what gets blurred, so nothing can be recovered from a stream or a screenshot,
+// even by tools that undo a blur. The filler is drawn once per value and kept until the launcher
+// closes (the lists redraw often and must not flicker); it comes from the system's random source,
+// never from the value itself. The same length keeps the layout still when the mode is switched; the
+// eye floats beside the value without taking room.
+const fillers = new Map<string, string>();
+function filler(text: string): string {
+  let out = fillers.get(text);
+  if (out === undefined) {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const bytes = crypto.getRandomValues(new Uint8Array(Array.from(text).length));
+    out = Array.from(bytes, (v) => chars[v % chars.length]).join("");
+    fillers.set(text, out);
+  }
+  return out;
+}
+
+function blurred(text: string, cls = ""): HTMLElement {
+  if (!streamer()) return h("span", { class: cls || undefined }, text);
+  return h("span", { class: `${cls} secret-blur`.trim(), "aria-hidden": "true" }, filler(text));
+}
+
+function secret(text: string, key: string, cls = ""): HTMLElement {
+  if (!streamer()) return h("span", { class: cls || undefined }, text);
+  const shown = state.revealed.has(key);
+  const eye = h("button", { type: "button", class: "secret-eye", title: t(shown ? "streamer_hide" : "streamer_show"), "aria-label": t(shown ? "streamer_hide" : "streamer_show"), "aria-pressed": shown ? "true" : "false" }, icon(shown ? "eye_off" : "eye"));
+  eye.addEventListener("click", () => {
+    if (shown) state.revealed.delete(key);
+    else state.revealed.add(key);
+    refreshSecrets();
+  });
+  return h("span", { class: "secret" }, h("span", { class: `${cls} ${shown ? "" : "secret-blur"}`.trim() || undefined, "aria-hidden": shown ? undefined : "true" }, shown ? text : filler(text)), eye);
+}
+
+function refreshSecrets(): void {
+  document.documentElement.classList.toggle("streamer", streamer());
+  inviteInput.classList.toggle("masked", streamer());
+  for (const sel of ["#view-play", "#view-server", "#view-settings", "#server-panel", "#account-chip"]) forceRender($(sel));
+  updateInviteFeedback();
+  renderAll();
 }
 
 // ------------------------------------------------------------------ small builders
@@ -248,6 +333,8 @@ function open(target: ExternalTarget): void {
 
 function errorText(e: LauncherError): string {
   switch (e.code) {
+    case 'account_banned':
+      return `You are banned from this server. Reason: ${e.detail || 'Contact support for details.'} You can appeal in Discord.`;
     case "invite_invalid_format":
       return e.detail ? tk(`invite_err_${e.detail}`) : t("err_invite_invalid_format");
     case "username_invalid":
@@ -298,10 +385,53 @@ function leaveLink(snap: Snapshot): HTMLButtonElement {
   return linkButton(t("connect_use_other"), () => showModal({ kind: "leave" }), { fk: "leave", disabled: snap.busy || snap.task !== null || snap.game.running });
 }
 
+// Servers joined before: one click to go back to one, no invite to paste. The current one is left out.
+async function switchTo(id: string): Promise<void> {
+  const r = await api.switchServer(id);
+  if (!r.ok && r.error && r.error.code !== "cancelled") {
+    if (!(await api.getSnapshot()).lastError) state.localError = r.error;
+    renderBanners();
+    return;
+  }
+  setView("play");
+}
+
+function savedServerSub(sv: Snapshot["savedServers"][number]): HTMLElement {
+  const address = blurred(`${sv.host}:${sv.port}`);
+  return sv.username ? h("span", {}, `${t("saved_account", { name: sv.username })} · `, address) : h("span", {}, address);
+}
+
+function savedServersCard(snap: Snapshot): HTMLElement | null {
+  const others = snap.savedServers.filter((sv) => !sv.current);
+  if (others.length === 0) return null;
+  const locked = snap.busy || snap.task !== null || snap.game.running;
+  const rows = others.map((sv) =>
+    h(
+      "div",
+      { class: "settings-row" },
+      h(
+        "div",
+        { class: "settings-row-text" },
+        h("span", { class: "settings-row-title" }, sv.name, " ", modeBadge(sv.mode)),
+        h("span", { class: "settings-row-sub mono" }, savedServerSub(sv)),
+      ),
+      h(
+        "div",
+        { class: "settings-actions" },
+        button(t("saved_join"), () => void switchTo(sv.id), { cls: "btn-primary", fk: `saved-${sv.id}`, disabled: locked }),
+        linkButton(t("saved_remove"), () => showModal({ kind: "remove_server", id: sv.id, name: sv.name }), { icon: "close", fk: `saved-rm-${sv.id}`, disabled: locked }),
+      ),
+    ),
+  );
+  return card("", h("h2", { class: "card-title" }, t("saved_title")), h("p", { class: "card-text" }, t("saved_text")), ...rows);
+}
+
 function playJoin(snap: Snapshot): HTMLElement[] {
+  const saved = savedServersCard(snap);
   return [
     h("div", { class: "eyebrow" }, t("join_eyebrow")),
     ...heading(t("join_title"), t("join_text")),
+    ...(saved ? [saved] : []),
     card(
       "",
       h("div", { class: "field" }, h("label", { class: "field-label", for: "invite-input" }, t("join_label")), inviteInput, invitePreview, inviteHint),
@@ -314,7 +444,7 @@ function playConnect(snap: Snapshot): HTMLElement[] {
   const sv = snap.server!;
   const name = serverName();
   const pub = sv.mode === "public";
-  const lastChecked = snap.connect.lastCheckedAt ? t("connect_last_checked", { time: new Date(snap.connect.lastCheckedAt).toLocaleTimeString(state.lang === "fi" ? "fi-FI" : "en-GB") }) : null;
+  const lastChecked = snap.connect.lastCheckedAt ? t("connect_last_checked", { time: new Date(snap.connect.lastCheckedAt).toLocaleTimeString(TIME_LOCALES[state.lang]) }) : null;
   const foot = h("div", { class: "card-row" }, lastChecked ? h("span", { class: "hint" }, lastChecked) : null, leaveLink(snap));
   if (snap.connect.checking || (snap.connect.problem === null && snap.connect.lastCheckedAt === null)) {
     return [eyebrow(snap), ...heading(t("connect_checking_title", { name }), t(pub ? "connect_checking_text_public" : "connect_checking_text")), card("", h("div", { class: "card-row" }, h("div", { class: "spinner", role: "presentation" }), t("connect_checking_wait")))];
@@ -347,17 +477,17 @@ function playConnect(snap: Snapshot): HTMLElement[] {
         card(
           "card-danger",
           h("h3", { class: "card-title" }, icon("shield"), t("connect_cert_subtitle")),
-          h("p", { class: "card-text" }, t("connect_cert_text", { host: sv.host })),
+          h("p", { class: "card-text" }, t("connect_cert_text", { host: hideText(sv.host) })),
           h("p", { class: "card-text" }, t("connect_cert_next")),
         ),
         foot,
       ];
     case "bad_answer":
-      return [eyebrow(snap), ...heading(t("connect_bad_title"), t("connect_bad_text", { host: sv.host, port: sv.port })), foot];
+      return [eyebrow(snap), ...heading(t("connect_bad_title"), t("connect_bad_text", { host: hideText(sv.host), port: sv.port })), foot];
     default:
       return [
         eyebrow(snap),
-        ...heading(t("connect_unreach_title", { name }), t(pub ? "connect_unreach_text_public" : "connect_unreach_text", { host: sv.host })),
+        ...heading(t("connect_unreach_title", { name }), t(pub ? "connect_unreach_text_public" : "connect_unreach_text", { host: hideText(sv.host) })),
         card(
           "",
           h(
@@ -374,6 +504,19 @@ function playConnect(snap: Snapshot): HTMLElement[] {
 }
 
 async function useKey(): Promise<void> {
+  // An invite pasted here (a common slip) is not an error: it is taken as the invite it is.
+  if (looksLikeInvite(keyInput.value)) {
+    const r = await api.setInviteCode(keyInput.value);
+    if (r.ok) {
+      keyInput.value = "";
+      state.keyFormOpen = false;
+      state.localError = { code: "invite_applied" };
+    } else if (!state.snap?.lastError) {
+      state.localError = r.error;
+    }
+    renderAll();
+    return;
+  }
   const key = extractAccountKey(keyInput.value);
   if (!key) {
     state.localError = { code: "key_invalid" };
@@ -469,16 +612,19 @@ function playRegister(snap: Snapshot): HTMLElement[] {
         usernameInput,
         usernameHint,
       ),
-      h(
-        "p",
-        { class: `small-print reg-invite${snap.server?.hasPendingInvite ? " included" : ""}` },
-        icon(snap.server?.hasPendingInvite ? "check" : "info"),
-        snap.server?.hasPendingInvite ? t("reg_invite_included") : t("reg_invite_missing"),
-      ),
+      snap.server?.hasPendingInvite
+        ? h("p", { class: "small-print reg-invite included" }, icon("check"), t("reg_invite_included"))
+        : h(
+            "div",
+            { class: "field" },
+            h("label", { class: "field-label", for: "register-invite-input" }, t("reg_invite_label")),
+            registerInviteInput,
+            h("p", { class: "small-print reg-invite" }, icon("info"), t("reg_invite_hint")),
+          ),
     ),
     card(
       "",
-      linkButton(state.keyFormOpen ? t("reg_have_key_hide") : t("reg_have_key"), () => {
+      button(state.keyFormOpen ? t("reg_have_key_hide") : t("reg_have_key"), () => {
         state.keyFormOpen = !state.keyFormOpen;
         renderPlay();
         if (state.keyFormOpen) keyInput.focus();
@@ -507,7 +653,7 @@ function playInstall(snap: Snapshot): HTMLElement[] {
       h(
         "div",
         { class: "settings-row" },
-        h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, t("install_folder")), h("span", { class: "settings-row-sub selectable" }, snap.install.dir)),
+        h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title" }, t("install_folder")), h("span", { class: "settings-row-sub selectable" }, secret(snap.install.dir, "install-dir"))),
         button(t("install_change"), () => void api.chooseInstallDir(), { icon: "folder", fk: "change-dir", disabled: snap.busy }),
       ),
       low ? h("div", { class: "hint hint-bad" }, icon("warning"), t("install_low_space")) : null,
@@ -613,11 +759,14 @@ function renderPlay(): void {
     snap.lastError?.code === "key_rejected",
     state.keyFormOpen,
     state.existingFormOpen,
+    state.offlineView,
+    state.offline,
     state.news[0]?.title ?? null,
     snap.phase === "installing" ? state.task?.kind ?? snap.task?.kind : null,
   ]);
   renderRegion(container, sig, () => {
     let parts: HTMLElement[];
+    if (state.offlineView) return [h("div", { class: "play-content" }, ...playOffline())];
     switch (snap.phase) {
       case "loading":
         parts = [h("div", { class: "card-row" }, h("div", { class: "spinner" }), t("loading"))];
@@ -671,7 +820,7 @@ function renderProgress(task: TaskProgress): void {
   const v = taskView(task, state.lang);
   const p = progressEls;
   p.title.textContent = t(v.titleKey);
-  p.percent.textContent = v.indeterminate ? "" : `${v.percent.toFixed(v.percent < 10 ? 1 : 0).replace(".", state.lang === "fi" ? "," : ".")} %`;
+  p.percent.textContent = v.indeterminate ? "" : `${v.percent.toFixed(v.percent < 10 ? 1 : 0).replace(".", state.lang === "en" ? "." : ",")} %`;
   p.fill.style.width = `${v.indeterminate ? 35 : v.percent}%`;
   p.bar.classList.toggle("paused", task.paused);
   p.bar.classList.toggle("indeterminate", v.indeterminate);
@@ -741,6 +890,18 @@ function renderActionBar(): void {
     primary.textContent = t("btn_wait");
     return;
   }
+  renderPlayMenu();
+  if (state.offlineView) {
+    const active = offlineActive();
+    primary.textContent = t(active ? "off_btn" : "off_btn_play");
+    primary.disabled = active || snap.game.running || snap.task !== null;
+    primary.classList.toggle("is-running", active);
+    primary.classList.remove("is-pause");
+    primary.classList.toggle("is-ready", !active && !reducedMotion.matches);
+    primary.setAttribute("data-action", active ? "none" : "offline");
+    renderRegion(info, JSON.stringify([state.lang, "offline", state.offline.phase]), () => [h("div", { class: "action-hint" }, t(active ? "off_hint_active" : "off_hint_idle"))]);
+    return;
+  }
   const b = primaryButton(snap, formState());
   primary.textContent = t(b.labelKey);
   primary.disabled = b.disabled;
@@ -758,8 +919,18 @@ function renderActionBar(): void {
     announce(v.indeterminate ? t(v.titleKey) : `${t(v.titleKey)}: ${Math.floor(v.percent / 10) * 10} %`);
   } else {
     renderRegion(info, JSON.stringify([state.lang, snap.phase, snap.connect.checking, snap.connect.problem, snap.install.totalBytes]), () => [renderSteps(snap), h("div", { class: "action-hint" }, actionHint(snap))]);
+    fitSteps();
     announce(actionHint(snap));
   }
+}
+
+// Longer languages (German, French, Russian...) can make the step labels wider than the space beside
+// the big button: then only the current step keeps its label, as on a narrow window.
+function fitSteps(): void {
+  const steps = document.querySelector<HTMLElement>("#action-info .steps");
+  if (!steps) return;
+  steps.classList.remove("compact");
+  if (steps.scrollWidth > steps.clientWidth) steps.classList.add("compact");
 }
 
 // The action bar's screen reader announcements: what to do next, and download milestones (every
@@ -772,6 +943,10 @@ function announce(text: string): void {
 async function onPrimary(): Promise<void> {
   const snap = state.snap;
   if (!snap) return;
+  if (state.offlineView) {
+    if (!offlineActive()) await startOffline();
+    return;
+  }
   const b = primaryButton(snap, formState());
   if (b.disabled || b.action === "none") return;
   state.localError = null;
@@ -800,7 +975,22 @@ async function onPrimary(): Promise<void> {
     case "new_invite":
       showModal({ kind: "leave" });
       return;
-    case "register":
+    case "register": {
+      const typedInvite = registerInviteInput.value.trim();
+      if (typedInvite) {
+        const applied = await api.setInviteCode(typedInvite);
+        if (!applied.ok) {
+          result = applied;
+          break;
+        }
+        registerInviteInput.value = "";
+      } else if (!state.snap?.server?.hasPendingInvite && state.snap?.status?.registration === "INVITECODE") {
+        // Never send a registration that is certain to be refused.
+        state.localError = { code: "invite_required" };
+        renderBanners();
+        registerInviteInput.focus();
+        return;
+      }
       result = await api.register(state.username.trim());
       if (result.ok) {
         state.username = "";
@@ -808,6 +998,7 @@ async function onPrimary(): Promise<void> {
         updateUsernameFeedback();
       }
       break;
+    }
     case "install":
     case "update":
       result = await api.startInstall();
@@ -877,7 +1068,7 @@ function playerList(status: ServerStatus, max: number): HTMLElement {
       "li",
       { class: `player w-${p.where}` },
       h("span", { class: "player-avatar", "aria-hidden": "true" }, Array.from(p.name)[0]?.toUpperCase() ?? "?"),
-      h("span", { class: "player-text" }, h("span", { class: "player-name" }, p.name), h("span", { class: "player-where" }, where)),
+      h("span", { class: "player-text" }, h("span", { class: `player-name${streamer() ? " secret-blur" : ""}` }, streamer() ? filler(p.name) : p.name), h("span", { class: "player-where" }, where)),
     );
   });
   const list = h("ul", { class: "players" }, ...items);
@@ -1069,13 +1260,56 @@ function renderPartners(): void {
   ]);
 }
 
+// ------------------------------------------------------------------ mods page
+
+// The optional client mods (client-mods/ in the repository, by ZFXSTATIC): what each one does.
+// Information only; the launcher installs them and the in-game Mod Menu switches them.
+const MODS: readonly { icon: IconName; name: StringKey; text: StringKey; use: StringKey }[] = [
+  { icon: "puzzle", name: "mod_cst_name", text: "mod_cst_text", use: "mod_cst_use" },
+  { icon: "heart", name: "mod_bhb_name", text: "mod_bhb_text", use: "mod_bhb_use" },
+  { icon: "hunt", name: "mod_trk_name", text: "mod_trk_text", use: "mod_trk_use" },
+  { icon: "settings", name: "mod_menu_name", text: "mod_menu_text", use: "mod_menu_use" },
+];
+
+function renderMods(): void {
+  renderRegion($("#view-mods"), state.lang, () => [
+    h("div", { class: "page mods-page" },
+      h("h1", { class: "page-title", id: "mods-title" }, t("nav_mods")),
+      h("p", { class: "page-sub" }, t("mods_subtitle")),
+      card(
+        "mods-author",
+        h("span", { class: "badge mods-badge" }, t("mods_badge")),
+        h("h2", { class: "mods-title" }, t("mods_title")),
+        h("p", { class: "card-text mods-intro" }, t("mods_intro")),
+        h("div", { class: "mods-grid" },
+          ...MODS.map((m) =>
+            h("div", { class: "mod-card" },
+              h("span", { class: "mod-by" }, t("mods_by")),
+              h("strong", { class: "mod-name" }, icon(m.icon), t(m.name)),
+              h("span", { class: "mod-text" }, t(m.text)),
+              h("span", { class: "mod-use" }, t(m.use)),
+            ),
+          ),
+        ),
+      ),
+      card("",
+        h("h2", { class: "card-title" }, icon("info"), t("mods_notes_title")),
+        h("p", { class: "card-text" }, t("mods_note_local")),
+        h("p", { class: "card-text" }, t("mods_note_settings")),
+        h("p", { class: "small-print" }, t("mods_note_windows")),
+      ),
+      h("p", { class: "small-print mods-credit" }, t("mods_credit")),
+    ),
+  ]);
+}
+
 // ------------------------------------------------------------------ server page
 
 function renderServer(): void {
   const container = $("#view-server");
   const snap = state.snap;
   const minute = Math.floor(Date.now() / 30000);
-  const sig = JSON.stringify([state.lang, snap?.server ?? null, snap?.status ?? null, snap?.phase, snap?.connect.problem, snap?.busy, !!snap?.task, snap?.game.running, minute]);
+  const sig = JSON.stringify([state.lang, snap?.server ?? null, snap?.savedServers ?? [], snap?.status ?? null, snap?.phase, snap?.connect.problem, snap?.busy, !!snap?.task, snap?.game.running, minute]);
   renderRegion(container, sig, () => {
     if (!snap?.server) {
       return [h("div", { class: "page" }, h("h1", { class: "page-title", id: "server-title" }, t("nav_server")), card("", h("p", { class: "card-text" }, t("sp_nojoin"))), partnerBanner())];
@@ -1083,10 +1317,10 @@ function renderServer(): void {
     const sv = snap.server;
     const status = snap.status;
     const rows: [string, Node | string][] = [
-      [t("server_address"), h("span", { class: "mono" }, `${sv.host}:${sv.port}`)],
+      [t("server_address"), secret(`${sv.host}:${sv.port}`, "server-address", "mono")],
       [t("server_connection"), sv.mode === "public" ? t("server_connection_public") : t("server_connection_private")],
     ];
-    if (sv.fingerprint) rows.push([t("server_fingerprint"), h("span", { class: "fingerprint" }, groupedFingerprint(sv.fingerprint))]);
+    if (sv.fingerprint) rows.push([t("server_fingerprint"), secret(groupedFingerprint(sv.fingerprint), "server-fp", "fingerprint")]);
     if (status) {
       rows.push([t("server_registration"), status.registration ? tk(`reg_mode_${status.registration}`) : "–"]);
       rows.push([t("server_version"), [status.version, status.commit].filter(Boolean).join(" · ") || "–"]);
@@ -1113,14 +1347,16 @@ function renderServer(): void {
         ),
       );
     }
+    const saved = savedServersCard(snap);
+    if (saved) parts.push(saved);
     parts.push(h("div", { class: "card-row" }, leaveLink(snap)));
-    return [h("div", { class: "page" }, ...parts)];
+    return [h("div", { class: "page page-server" }, ...parts)];
   });
 }
 
 // ------------------------------------------------------------------ settings page
 
-function settingsRow(title: string, sub: string | null, ...actions: (HTMLElement | null)[]): HTMLElement {
+function settingsRow(title: string, sub: string | Node | null, ...actions: (HTMLElement | null)[]): HTMLElement {
   return h(
     "div",
     { class: "settings-row" },
@@ -1129,40 +1365,169 @@ function settingsRow(title: string, sub: string | null, ...actions: (HTMLElement
   );
 }
 
+interface DropdownOption<T> {
+  value: T;
+  label: string;
+  lang?: string;
+}
+
+// A select in the launcher's own style: the native <select> opens a list drawn by Windows. A button
+// (the closed look of .select, so <label for> still points at it) and a listbox, with the keys a
+// select has: Up/Down/Home/End move, Enter/Space choose, Escape and Tab close, typing a letter jumps.
+function dropdown<T extends string | number>(opts: { id: string; fk: string; value: T; options: DropdownOption<T>[]; onChange: (v: T) => void; disabled?: boolean }): HTMLElement {
+  const current = opts.options.find((o) => o.value === opts.value) ?? opts.options[0];
+  const listId = `${opts.id}-list`;
+  const btn = h("button", { type: "button", class: "select dropdown-button", id: opts.id, "data-fk": opts.fk, "aria-haspopup": "listbox", "aria-expanded": "false", "aria-controls": listId, disabled: opts.disabled }, current.label);
+  if (current.lang) btn.setAttribute("lang", current.lang);
+  const list = h("ul", { class: "dropdown-list", id: listId, role: "listbox", tabindex: "-1", hidden: true });
+  const items = opts.options.map((o, i) => {
+    const li = h("li", { class: "dropdown-option", role: "option", id: `${opts.id}-opt-${i}`, "aria-selected": o.value === current.value ? "true" : "false", lang: o.lang }, o.label);
+    li.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus on the list
+    li.addEventListener("click", () => choose(i));
+    li.addEventListener("mousemove", () => highlight(i));
+    list.appendChild(li);
+    return li;
+  });
+  const wrap = h("div", { class: "dropdown" }, btn, list);
+  let active = Math.max(0, opts.options.indexOf(current));
+
+  function highlight(i: number): void {
+    active = (i + items.length) % items.length;
+    items.forEach((li, j) => li.classList.toggle("active", j === active));
+    list.setAttribute("aria-activedescendant", items[active].id);
+    items[active].scrollIntoView({ block: "nearest" });
+  }
+  function onOutside(e: MouseEvent): void {
+    if (!wrap.contains(e.target as Node)) close(false);
+  }
+  function open(): void {
+    if (opts.disabled || !list.hidden) return;
+    list.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    // Open upwards when there is no room below (the language card sits at the bottom of the page).
+    const below = window.innerHeight - btn.getBoundingClientRect().bottom;
+    wrap.classList.toggle("dropdown-up", below < list.offsetHeight + 12);
+    highlight(Math.max(0, opts.options.indexOf(current)));
+    list.focus();
+    document.addEventListener("mousedown", onOutside, true);
+  }
+  function close(refocus: boolean): void {
+    if (list.hidden) return;
+    list.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+    document.removeEventListener("mousedown", onOutside, true);
+    if (refocus) btn.focus();
+  }
+  function choose(i: number): void {
+    close(true);
+    const o = opts.options[i];
+    if (o && o.value !== current.value) opts.onChange(o.value);
+  }
+
+  btn.addEventListener("click", () => (list.hidden ? open() : close(true)));
+  btn.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      open();
+    }
+  });
+  list.addEventListener("keydown", (e) => {
+    const moves: Record<string, () => number> = { ArrowDown: () => active + 1, ArrowUp: () => active - 1, Home: () => 0, End: () => items.length - 1 };
+    if (moves[e.key]) {
+      e.preventDefault();
+      highlight(moves[e.key]());
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      choose(active);
+    } else if (e.key === "Escape") {
+      e.preventDefault(); // so Escape closes the list, not the page behind it
+      e.stopPropagation();
+      close(true);
+    } else if (e.key === "Tab") {
+      close(false);
+    } else if (e.key.length === 1) {
+      const k = e.key.toLowerCase();
+      const next = opts.options.findIndex((o, j) => j > active && o.label.toLowerCase().startsWith(k));
+      const first = opts.options.findIndex((o) => o.label.toLowerCase().startsWith(k));
+      if (next >= 0 || first >= 0) highlight(next >= 0 ? next : first);
+    }
+  });
+  // Focus leaving the list closes it; a click on the button closes it through the button instead.
+  list.addEventListener("blur", (e) => {
+    if (e.relatedTarget !== btn) close(false);
+  });
+  return wrap;
+}
+
+// A switch slides its knob first and saves after, because saving redraws the page with a new switch
+// already in place and the slide would never be seen.
+function onToggle(sw: HTMLElement, save: (on: boolean) => void): void {
+  sw.addEventListener("click", () => {
+    const on = sw.getAttribute("aria-checked") !== "true";
+    sw.setAttribute("aria-checked", on ? "true" : "false");
+    window.setTimeout(() => save(on), 220);
+  });
+}
+
+type SettingsTab = "game" | "graphics" | "account" | "launcher";
+const SETTINGS_TABS: SettingsTab[] = ["game", "graphics", "account", "launcher"];
+const SETTINGS_TAB_ICONS: Record<SettingsTab, IconName> = { game: "gamepad", graphics: "monitor", account: "user", launcher: "settings" };
+
+// A setting's long explanation sits behind a small info button: a tooltip on hover and on keyboard
+// focus, and the button's accessible name, so the page shows only the setting's name.
+function infoTip(text: string): HTMLElement {
+  return h("button", { type: "button", class: "info-tip", "aria-label": text, "data-tip": text }, icon("info"));
+}
+
+function infoRow(title: HTMLElement, text: string, control: HTMLElement): HTMLElement {
+  return h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("div", { class: "settings-row-head" }, title, infoTip(text))), control);
+}
+
 function renderSettings(): void {
   const container = $("#view-settings");
   const snap = state.snap;
   if (!snap) return;
-  const sig = JSON.stringify([state.lang, snap.settings, snap.install.dir, snap.account, snap.server, snap.app, snap.phase, snap.busy, !!snap.task]);
+  const sig = JSON.stringify([state.lang, state.settingsTab, state.offline.phase, state.offlineSaveNote, snap.settings, snap.install.dir, snap.account, snap.server, snap.savedServers, snap.app, snap.phase, snap.busy, !!snap.task]);
   renderRegion(container, sig, () => {
     const busy = snap.busy || snap.task !== null || snap.game.running;
 
-    const select = h("select", { class: "select", id: "gfx-select", "data-fk": "gfx" });
-    for (const g of GRAPHICS_PRESETS) {
-      const o = h("option", { value: String(g) }, t(graphicsKey(g)));
-      if (g === snap.settings.graphics) o.selected = true;
-      select.appendChild(o);
-    }
-    select.addEventListener("change", () => void api.setSettings({ graphics: Number(select.value) as GraphicsPreset }));
+    const select = dropdown<GraphicsPreset>({
+      id: "gfx-select",
+      fk: "gfx",
+      value: snap.settings.graphics,
+      options: GRAPHICS_PRESETS.map((g) => ({ value: g, label: t(graphicsKey(g)) })),
+      onChange: (graphics) => void api.setSettings({ graphics }),
+    });
 
     // Auto exposure (roadmap 4.17): "game" by default; "basic" is the opt-in experiment for the airship.
-    const exposure = h("select", { class: "select", id: "exposure-select", "data-fk": "exposure" });
-    for (const m of EXPOSURE_MODES) {
-      const o = h("option", { value: m }, t(exposureKey(m)));
-      if (m === snap.settings.exposure) o.selected = true;
-      exposure.appendChild(o);
-    }
-    exposure.addEventListener("change", () => void api.setSettings({ exposure: exposure.value as ExposureMode }));
+    const exposure = dropdown<ExposureMode>({
+      id: "exposure-select",
+      fk: "exposure",
+      value: snap.settings.exposure,
+      options: EXPOSURE_MODES.map((m) => ({ value: m, label: t(exposureKey(m)) })),
+      onChange: (exposure) => void api.setSettings({ exposure }),
+    });
 
     const windowed = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": snap.settings.windowed ? "true" : "false", "aria-labelledby": "windowed-label", "data-fk": "windowed" });
-    windowed.addEventListener("click", () => void api.setSettings({ windowed: !snap.settings.windowed }));
+    onToggle(windowed, (on) => void api.setSettings({ windowed: on }));
+
+    type HuntRegion = 'auto' | 'main' | 'ger' | 'us';
+    const huntRegion = dropdown<HuntRegion>({
+      id: 'hunt-region',
+      fk: 'hunt-region',
+      value: snap.settings.huntRegion ?? 'auto',
+      options: [{ value: 'auto', label: t('region_auto') }, { value: 'main', label: t('region_main') }, { value: 'ger', label: t('region_ger') }, { value: 'us', label: t('region_us') }],
+      onChange: (huntRegion) => void api.setSettings({ huntRegion }),
+      disabled: busy,
+    });
 
     const game = card(
       "settings-section",
       h("h2", { class: "card-title" }, t("set_game")),
+      infoRow(h("label", { class: "settings-row-title", for: "hunt-region" }, t("set_region")), t("set_region_text"), huntRegion),
       settingsRow(
         t("set_folder"),
-        snap.install.dir,
+        secret(snap.install.dir, "install-dir"),
         button(t("set_change_folder"), () => void api.chooseInstallDir(), { icon: "folder", fk: "set-dir", disabled: busy }),
         button(t("set_open_folder"), () => void api.openGameFolder(), { fk: "set-open" }),
       ),
@@ -1172,18 +1537,34 @@ function renderSettings(): void {
     const graphics = card(
       "settings-section",
       h("h2", { class: "card-title" }, t("set_graphics")),
-      h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("label", { class: "settings-row-title", for: "gfx-select" }, t("set_graphics_level")), h("span", { class: "settings-row-sub" }, t("set_graphics_text"))), select),
-      h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("label", { class: "settings-row-title", for: "exposure-select" }, t("set_exposure")), h("span", { class: "settings-row-sub" }, t("set_exposure_text"))), exposure),
-      h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title", id: "windowed-label" }, t("set_windowed")), h("span", { class: "settings-row-sub" }, t("set_windowed_help"))), windowed),
+      infoRow(h("label", { class: "settings-row-title", for: "gfx-select" }, t("set_graphics_level")), t("set_graphics_text"), select),
+      infoRow(h("label", { class: "settings-row-title", for: "exposure-select" }, t("set_exposure")), t("set_exposure_text"), exposure),
+      infoRow(h("span", { class: "settings-row-title", id: "windowed-label" }, t("set_windowed")), t("set_windowed_help"), windowed),
     );
 
-    const langRow = h("div", { class: "lang-switch", role: "group", "aria-label": t("set_language"), style: undefined });
-    for (const l of ["en", "fi"] as const) {
-      const b = h("button", { type: "button", class: "lang-btn", lang: l, "aria-pressed": snap.settings.language === l ? "true" : "false", "data-fk": `set-lang-${l}` }, t(l === "en" ? "lang_en" : "lang_fi"));
-      b.addEventListener("click", () => void api.setSettings({ language: l }));
-      langRow.appendChild(b);
-    }
-    const language = card("settings-section", h("h2", { class: "card-title" }, t("set_language")), langRow);
+    // The launcher's language, every one by its own name (the rail keeps quick buttons for three).
+    const launcherLanguage = dropdown<Language>({
+      id: "launcher-language-select",
+      fk: "launcher-language",
+      value: snap.settings.language,
+      options: LANGUAGES.map((l) => ({ value: l, label: t(`lang_${l}`), lang: l })),
+      onChange: (language) => void api.setSettings({ language }),
+    });
+    // The game's own text language: every language the 1.4.4 client has text for, by its own name.
+    const gameLanguage = dropdown<GameLanguage>({
+      id: "game-language-select",
+      fk: "game-language",
+      value: snap.settings.gameLanguage,
+      options: GAME_LANGUAGES.map((g) => (g === "auto" ? { value: g, label: t("game_lang_auto") } : { value: g, label: GAME_LANGUAGE_NAMES[g], lang: g })),
+      onChange: (gameLanguage) => void api.setSettings({ gameLanguage }),
+    });
+
+    const language = card(
+      "settings-section",
+      h("h2", { class: "card-title" }, t("set_language")),
+      infoRow(h("label", { class: "settings-row-title", for: "launcher-language-select" }, t("set_launcher_language")), t("set_launcher_language_text"), launcherLanguage),
+      infoRow(h("label", { class: "settings-row-title", for: "game-language-select" }, t("set_game_language")), t("set_game_language_text"), gameLanguage),
+    );
 
     const account = card(
       "settings-section",
@@ -1196,7 +1577,55 @@ function renderSettings(): void {
             button(t("set_logout"), () => showModal({ kind: "logout" }), { cls: "btn-danger", fk: "set-logout", disabled: busy }),
           )
         : settingsRow(t("set_not_signed"), null),
-      snap.server ? settingsRow(t("set_server"), `${serverName()} (${snap.server.host}:${snap.server.port})`, button(t("set_leave"), () => showModal({ kind: "leave" }), { fk: "set-leave", disabled: busy })) : null,
+      snap.server ? settingsRow(t("set_server_current"), h("span", {}, `${serverName()} (`, secret(`${snap.server.host}:${snap.server.port}`, "server-address"), ")"), button(t("set_add_server"), () => showModal({ kind: "leave" }), { fk: "set-leave", disabled: busy })) : null,
+    );
+
+    // The DLL keeps its log window hidden; players who troubleshoot can bring it back.
+    const showConsole = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": snap.settings.showConsole ? "true" : "false", "aria-labelledby": "console-label", "data-fk": "show-console" });
+    onToggle(showConsole, (on) => void api.setSettings({ showConsole: on }));
+    // Offline play's save: a portable backup to a file, and a restore (asked first: it replaces the
+    // offline save on this PC). Not while offline play runs.
+    const saveLocked = offlineActive() || snap.game.running;
+    const offlineCard = card(
+      "settings-section",
+      h("h2", { class: "card-title" }, t("off_save_card")),
+      settingsRow(
+        t("off_save_title"),
+        state.offlineSaveNote ?? (saveLocked ? t("off_save_locked") : t("off_save_text")),
+        button(t("off_save_backup"), () => void backupOfflineSave(), { icon: "folder", fk: "offline-backup", disabled: saveLocked }),
+        button(t("off_save_restore"), () => showModal({ kind: "offline_restore" }), { icon: "refresh", fk: "offline-restore", disabled: saveLocked }),
+      ),
+    );
+
+    const troubleshooting = card(
+      "settings-section",
+      h("h2", { class: "card-title" }, t("set_troubleshooting")),
+      infoRow(h("span", { class: "settings-row-title", id: "console-label" }, t("set_show_console")), t("set_show_console_text"), showConsole),
+    );
+    // Other servers joined before: switch to one, or take it off the list (its key stays on this PC).
+    const otherServers = snap.savedServers.some((sv) => !sv.current)
+      ? card(
+          "settings-section",
+          h("div", { class: "settings-row-head card-title" }, h("h2", { class: "card-title-text" }, t("saved_other_title")), infoTip(t("saved_other_text"))),
+          ...snap.savedServers
+            .filter((sv) => !sv.current)
+            .map((sv) =>
+              settingsRow(
+                sv.name,
+                savedServerSub(sv),
+                button(t("saved_switch_to"), () => void switchTo(sv.id), { cls: "btn-primary", fk: `set-saved-${sv.id}`, disabled: busy }),
+                button(t("saved_remove"), () => showModal({ kind: "remove_server", id: sv.id, name: sv.name }), { icon: "close", fk: `set-saved-rm-${sv.id}`, disabled: busy }),
+              ),
+            ),
+        )
+      : null;
+
+    const streamerSwitch = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": streamer() ? "true" : "false", "aria-labelledby": "streamer-label", "data-fk": "streamer" });
+    onToggle(streamerSwitch, (on) => void api.setSettings({ streamerMode: on }));
+    const streaming = card(
+      "settings-section",
+      h("h2", { class: "card-title" }, t("set_streaming")),
+      h("div", { class: "settings-row" }, h("div", { class: "settings-row-text" }, h("span", { class: "settings-row-title", id: "streamer-label" }, t("set_streamer")), h("span", { class: "settings-row-sub" }, t("set_streamer_help"))), streamerSwitch),
     );
 
     const about = card(
@@ -1217,7 +1646,39 @@ function renderSettings(): void {
       snap.app.updateReady ? h("div", { class: "card-row" }, button(t("update_restart"), () => void api.installUpdate(), { cls: "btn-primary", fk: "about-update", disabled: snap.game.running })) : null,
     );
 
-    return [h("div", { class: "page" }, h("h1", { class: "page-title", id: "settings-title" }, t("set_title")), game, graphics, language, account, about)];
+    // Tabs like the game's own settings menu: one group at a time instead of one long page.
+    const panels: Record<SettingsTab, (HTMLElement | null)[]> = {
+      game: [game],
+      graphics: [graphics],
+      account: [account, h("p", {}, "On Windows, Play reports your motherboard UUID and available TPM public-key hash to the selected server for optional moderator device restrictions. The server stores keyed hashes. These identifiers are not verified hardware attestation; a TPM is not required."), otherServers],
+      launcher: [language, offlineCard, troubleshooting, streaming, about],
+    };
+    const tabs = h("div", { class: "settings-tabs", role: "tablist", "aria-label": t("set_title") });
+    for (const tab of SETTINGS_TABS) {
+      const on = state.settingsTab === tab;
+      const b = h("button", { type: "button", class: "settings-tab", role: "tab", id: `set-tab-${tab}`, "aria-selected": on ? "true" : "false", "aria-controls": "settings-panel", tabindex: on ? "0" : "-1", "data-fk": `set-tab-${tab}`, title: t(`set_tab_${tab}`) }, icon(SETTINGS_TAB_ICONS[tab]), h("span", { class: "settings-tab-label" }, t(`set_tab_${tab}`)));
+      b.addEventListener("click", () => {
+        state.settingsTab = tab;
+        renderSettings();
+      });
+      b.addEventListener("keydown", (e) => {
+        const i = SETTINGS_TABS.indexOf(tab);
+        const next = e.key === "ArrowRight" ? SETTINGS_TABS[(i + 1) % SETTINGS_TABS.length] : e.key === "ArrowLeft" ? SETTINGS_TABS[(i + SETTINGS_TABS.length - 1) % SETTINGS_TABS.length] : null;
+        if (!next) return;
+        e.preventDefault();
+        state.settingsTab = next;
+        renderSettings();
+        document.getElementById(`set-tab-${next}`)?.focus();
+      });
+      tabs.appendChild(b);
+    }
+    // Locked settings say why: a click on a greyed-out control otherwise does nothing. The game
+    // process takes a few seconds to really end after its window closes, which is the usual case.
+    const lockReason = snap.game.running ? t("set_locked_game") : snap.task !== null || snap.busy ? t("set_locked_task") : null;
+    const lockNotice = lockReason ? h("div", { class: "settings-locked", role: "status" }, icon("warning"), h("span", {}, lockReason)) : null;
+    const panel = h("div", { class: "settings-panel", id: "settings-panel", role: "tabpanel", "aria-labelledby": `set-tab-${state.settingsTab}` }, lockNotice, ...panels[state.settingsTab]);
+    // The tabs in a row on top, then one panel with every setting in its own row box.
+    return [h("div", { class: "page page-wide" }, h("h1", { class: "page-title", id: "settings-title" }, t("set_title")), h("div", { class: "settings-layout" }, tabs, panel))];
   });
 }
 
@@ -1306,7 +1767,7 @@ function renderCredits(): void {
   renderRegion(container, JSON.stringify([state.lang]), () => [
     h(
       "div",
-      { class: "page" },
+      { class: "page credits-page" },
       h("h1", { class: "page-title", id: "credits-title" }, t("credits_title")),
       h("p", { class: "page-sub" }, t("credits_intro")),
       card(
@@ -1367,6 +1828,7 @@ function renderBanners(): void {
           { class: "banner banner-error", role: "alert" },
           icon("warning"),
           h("span", { class: "banner-text" }, errorText(error)),
+          ...(error.code === 'account_banned' ? [linkButton('Go to support',()=>open('discord'),{fk:'ban-support'})] : []),
           linkButton(t("err_dismiss"), () => {
             state.localError = null;
             void api.dismissError();
@@ -1408,6 +1870,7 @@ const NAV: { view: View; icon: IconName; key: StringKey }[] = [
   { view: "news", icon: "news", key: "nav_news" },
   { view: "server", icon: "server", key: "nav_server" },
   { view: "partners", icon: "people", key: "nav_partners" },
+  { view: "mods", icon: "puzzle", key: "nav_mods" },
   { view: "settings", icon: "settings", key: "nav_settings" },
 ];
 
@@ -1422,7 +1885,7 @@ function renderRail(): void {
         { type: "button", class: "nav-item", "aria-current": state.view === n.view ? "page" : undefined, "data-fk": `nav-${n.view}` },
         icon(n.icon),
         t(n.key),
-        n.view === "news" && unread ? h("span", { class: "nav-badge", role: "img", "aria-label": t("news_new") }) : null,
+        n.view === "news" && unread ? h("img", { class: "nav-badge", src: newsBadge, alt: t("news_new"), draggable: "false" }) : null,
       );
       b.addEventListener("click", () => setView(n.view));
       return h("li", {}, b);
@@ -1430,15 +1893,42 @@ function renderRail(): void {
   );
   const chip = $("#account-chip");
   const user = snap?.account.hasKey ? snap.account.username : null;
-  renderRegion(chip, JSON.stringify([state.lang, user, snap?.server?.name ?? null, snap?.status?.name ?? null]), () => [
-    h("span", { class: `avatar${user ? "" : " empty"}`, "aria-hidden": "true" }, user ? Array.from(user)[0].toUpperCase() : "?"),
-    h(
-      "span",
-      { class: "account-text" },
-      h("span", { class: "account-label" }, snap?.server ? serverName() : t("rail_not_joined")),
-      h("span", { class: "account-name" }, user ?? t("rail_not_signed_in")),
-    ),
-  ]);
+  // With other servers saved, the chip is also the server switcher: a click lists them, one more click joins.
+  const others = snap?.savedServers.filter((sv) => !sv.current) ?? [];
+  const locked = !snap || snap.busy || snap.task !== null || snap.game.running;
+  if (others.length === 0 || locked) state.serverMenu = false;
+  renderRegion(chip, JSON.stringify([state.lang, user, snap?.server?.name ?? null, snap?.status?.name ?? null, others, locked, state.serverMenu]), () => {
+    const inner = [
+      h("span", { class: `avatar${user ? "" : " empty"}`, "aria-hidden": "true" }, user ? Array.from(user)[0].toUpperCase() : "?"),
+      h(
+        "span",
+        { class: "account-text" },
+        h("span", { class: "account-label" }, snap?.server ? serverName() : t("rail_not_joined")),
+        h("span", { class: "account-name" }, user ?? t("rail_not_signed_in")),
+      ),
+    ];
+    if (others.length === 0) return inner;
+    const toggle = h("button", { type: "button", class: "account-switch", "data-fk": "server-switch", "aria-haspopup": "menu", "aria-expanded": state.serverMenu ? "true" : "false", title: t("saved_switch"), disabled: locked }, ...inner);
+    toggle.addEventListener("click", () => {
+      state.serverMenu = !state.serverMenu;
+      renderRail();
+    });
+    const menu = h(
+      "ul",
+      { class: "server-menu", role: "menu", "aria-label": t("saved_switch"), hidden: !state.serverMenu },
+      h("li", { class: "server-menu-head", role: "presentation" }, t("saved_switch")),
+      ...others.map((sv) => {
+        const item = h("button", { type: "button", class: "server-menu-item", role: "menuitem", "data-fk": `switch-${sv.id}` }, h("span", { class: "server-menu-name" }, sv.name), h("span", { class: "server-menu-sub" }, savedServerSub(sv)));
+        item.addEventListener("click", () => {
+          state.serverMenu = false;
+          renderRail();
+          void switchTo(sv.id);
+        });
+        return h("li", { role: "none" }, item);
+      }),
+    );
+    return [toggle, menu];
+  });
   for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>("#lang-switch .lang-btn"))) {
     b.setAttribute("aria-pressed", b.dataset.lang === state.lang ? "true" : "false");
   }
@@ -1458,8 +1948,8 @@ function setView(v: View): void {
   for (const view of VIEWS) $(`#view-${view}`).hidden = view !== v;
   $("#actionbar").hidden = false;
   // The Server page shows everything the side panel shows, in full: no need for both. The Credits
-  // and Partners pages have long content and get the room too.
-  $(".world").classList.toggle("no-panel", v === "server" || v === "credits" || v === "partners");
+  // Partners and Mods pages have long content and get the room too.
+  $(".world").classList.toggle("no-panel", v === "server" || v === "credits" || v === "partners" || v === "mods");
   renderAll();
   if (changed && !reducedMotion.matches) {
     const selected = $(`#view-${v}`);
@@ -1498,6 +1988,7 @@ function applyStaticI18n(): void {
   inviteInput.placeholder = t("join_placeholder");
   usernameInput.placeholder = t("reg_placeholder");
   keyInput.placeholder = t("reg_key_placeholder");
+  registerInviteInput.placeholder = t("reg_invite_placeholder");
   existingGameInput.placeholder = t("install_existing_placeholder");
   $("#win-max").setAttribute("aria-label", t(state.maximized ? "window_restore" : "window_maximize"));
   $("#github-btn").title = t("github_link");
@@ -1515,6 +2006,7 @@ function renderAll(): void {
   if (state.view === "settings") renderSettings();
   if (state.view === "credits") renderCredits();
   if (state.view === "partners") renderPartners();
+  if (state.view === "mods") renderMods();
   renderActionBar();
   renderPanel();
 }
@@ -1557,8 +2049,8 @@ function renderModal(): void {
   switch (m.kind) {
     case "invite":
       title = t("link_title", { name: m.name });
-      text = [h("p", { class: "modal-text" }, t("link_text", { name: m.name, host: m.host })), h("div", {}, modeBadge(m.mode))];
-      if (m.fp) text.push(h("p", { class: "modal-text mono" }, t("link_fingerprint", { fp: shortFingerprint(m.fp) })));
+      text = [h("p", { class: "modal-text" }, t("link_text", { name: m.name, host: hideText(m.host) })), h("div", {}, modeBadge(m.mode))];
+      if (m.fp) text.push(h("p", { class: "modal-text mono" }, t("link_fingerprint", { fp: hideText(shortFingerprint(m.fp)) })));
       if (state.snap?.server) text.push(h("p", { class: "modal-text" }, t("link_switch_note")));
       confirmLabel = t("link_join");
       onConfirm = async () => {
@@ -1572,7 +2064,7 @@ function renderModal(): void {
     case "cert_changed":
       title = t("certchg_title");
       text = [
-        h("p", { class: "modal-text" }, t("certchg_text", { host: m.host })),
+        h("p", { class: "modal-text" }, t("certchg_text", { host: hideText(m.host) })),
         h(
           "dl",
           { class: "fp-compare" },
@@ -1617,6 +2109,28 @@ function renderModal(): void {
         return null;
       };
       break;
+    case "offline_restore":
+      title = t("off_restore_title");
+      text = [h("p", { class: "modal-text" }, t("off_restore_text"))];
+      confirmLabel = t("off_restore_confirm");
+      onConfirm = async () => {
+        const r = await api.importOfflineSave();
+        if (r.ok) {
+          state.offlineSaveNote = t("off_restore_done");
+          renderSettings();
+        } else await report(r);
+        return null;
+      };
+      break;
+    case "remove_server":
+      title = t("remove_server_title", { name: m.name });
+      text = [h("p", { class: "modal-text" }, t("remove_server_text", { name: m.name }))];
+      confirmLabel = t("remove_server_confirm");
+      onConfirm = async () => {
+        await report(await api.removeSavedServer(m.id));
+        return null;
+      };
+      break;
   }
   const cancel = button(m.kind === "invite" ? t("link_cancel") : t("cancel"), () => closeModal(), { fk: "modal-cancel" });
   const confirm = button(confirmLabel, () => {
@@ -1640,8 +2154,23 @@ function renderModal(): void {
   root.replaceChildren(dialog);
   root.hidden = false;
   // Destructive or risky choices never get the default focus.
-  (m.kind === "logout" || m.kind === "cert_changed" ? cancel : confirm).focus();
+  (m.kind === "logout" || m.kind === "cert_changed" || m.kind === "remove_server" ? cancel : confirm).focus();
 }
+
+// The server switcher closes on a click anywhere else, and on Escape.
+window.addEventListener("mousedown", (e) => {
+  if (state.serverMenu && !$("#account-chip").contains(e.target as Node)) {
+    state.serverMenu = false;
+    renderRail();
+  }
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && state.serverMenu) {
+    state.serverMenu = false;
+    renderRail();
+    document.querySelector<HTMLButtonElement>(".account-switch")?.focus();
+  }
+});
 
 document.addEventListener("keydown", (e) => {
   if (!state.modal) {
@@ -1761,8 +2290,14 @@ async function loadExtras(snap: Snapshot): Promise<void> {
 
 function onSnapshot(snap: Snapshot): void {
   const langChanged = snap.settings.language !== state.lang;
+  const streamerChanged = snap.settings.streamerMode !== state.snap?.settings.streamerMode;
   const serverChanged = JSON.stringify(snap.server) !== JSON.stringify(state.snap?.server ?? null);
+  // A rejected saved key means a returning player must re-enter their account key. Reveal the
+  // key form immediately (the "I already have an account key" entry), rather than hiding it
+  // behind a link under the "Choose your name" registration form.
+  const keyJustRejected = snap.lastError?.code === "key_rejected" && state.snap?.lastError?.code !== "key_rejected";
   state.snap = snap;
+  if (keyJustRejected) state.keyFormOpen = true;
   state.lang = snap.settings.language;
   if (snap.phase !== "installing") state.task = null;
   if (serverChanged && !snap.server) {
@@ -1774,6 +2309,10 @@ function onSnapshot(snap: Snapshot): void {
   if (langChanged) {
     forceRender($("#view-play"));
   }
+  if (streamerChanged || serverChanged) {
+    state.revealed.clear();
+    refreshSecrets();
+  }
   // The game runs next to the launcher: the background holds still meanwhile (styles.css).
   $("#hero").classList.toggle("game-running", snap.game.running);
   renderAll();
@@ -1781,6 +2320,7 @@ function onSnapshot(snap: Snapshot): void {
 }
 
 function initChrome(): void {
+  window.addEventListener("resize", fitSteps);
   const min = $("#win-min");
   const max = $("#win-max");
   const close = $("#win-close");
@@ -1796,7 +2336,7 @@ function initChrome(): void {
     max.setAttribute("aria-label", t(maximized ? "window_restore" : "window_maximize"));
   });
   for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>("#lang-switch .lang-btn"))) {
-    b.addEventListener("click", () => void api.setSettings({ language: b.dataset.lang === "fi" ? "fi" : "en" }));
+    b.addEventListener("click", () => void api.setSettings({ language: LANGUAGES.find((l) => l === b.dataset.lang) ?? "en" }));
   }
   // Credits, Discord and GitHub live in the rail, so they are available on every page, invite or not.
   const credits = $("#credits-btn");
@@ -1815,6 +2355,190 @@ function initChrome(): void {
   }, 30000);
 }
 
+// ------------------------------------------------------------------ offline play
+
+// Offline play (Discussion #57): PLAY gets a small arrow with "Play offline". The local runtime
+// starts a server on this PC and the Play page follows its phases: starting, a one-time username,
+// running, stopping, stopped or an error.
+const OFFLINE_STEPS: { phase: OfflinePhase; key: string }[] = [
+  { phase: "preparing", key: "off_step_preparing" },
+  { phase: "starting-metagame", key: "off_step_metagame" },
+  { phase: "starting-deploy", key: "off_step_deploy" },
+  { phase: "launching-game", key: "off_step_game" },
+];
+
+const offlineNameInput = h("input", { class: "input input-big", id: "offline-name", maxlength: "16", autocomplete: "off", spellcheck: "false", "data-fk": "offline-name", "aria-describedby": "offline-name-hint" }) as HTMLInputElement;
+const offlineNameHint = h("div", { class: "hint", id: "offline-name-hint", "aria-live": "polite" });
+offlineNameInput.addEventListener("input", () => {
+  state.offlineName = offlineNameInput.value;
+  updateOfflineNameFeedback();
+});
+offlineNameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") void submitOfflineName();
+});
+
+function updateOfflineNameFeedback(): void {
+  const check = checkUsername(state.offlineName.trim());
+  offlineNameHint.className = check === "ok" ? "hint hint-ok" : state.offlineName.length === 0 ? "hint" : "hint hint-bad";
+  if (check === "ok") offlineNameHint.replaceChildren(icon("check"), t("reg_check_ok"));
+  else offlineNameHint.replaceChildren(tk(`reg_check_${check}`));
+  const btn = document.querySelector<HTMLButtonElement>('[data-fk="offline-continue"]');
+  if (btn) btn.disabled = check !== "ok";
+}
+
+async function backupOfflineSave(): Promise<void> {
+  const r = await api.exportOfflineSave();
+  if (r.ok) {
+    state.offlineSaveNote = t("off_backup_done");
+    renderSettings();
+  } else if (r.error.code !== "cancelled") {
+    state.localError = r.error;
+    renderBanners();
+  }
+}
+
+function offlineActive(): boolean {
+  return state.offline.phase !== "stopped" && state.offline.phase !== "error";
+}
+
+async function startOffline(username?: string): Promise<void> {
+  state.offlineView = true;
+  state.playMenu = false;
+  setView("play");
+  // The phases arrive as status events; the result only matters when the start was refused
+  // before any phase was set (for example the online game already running).
+  const r = await api.startOffline(username);
+  if (!r.ok && r.error.code !== "cancelled" && state.offline.phase !== "error") onOfflineStatus({ phase: "error", error: r.error });
+}
+
+async function submitOfflineName(): Promise<void> {
+  const name = state.offlineName.trim();
+  if (checkUsername(name) !== "ok") return;
+  await startOffline(name);
+}
+
+function leaveOffline(): void {
+  state.offlineView = false;
+  state.playMenu = false;
+  renderAll();
+}
+
+function onOfflineStatus(s: OfflineStatus): void {
+  state.offline = s;
+  if (s.phase !== "stopped") state.offlineView = true;
+  if (s.phase === "running" || s.phase === "launching-game") {
+    state.offlineName = "";
+    offlineNameInput.value = "";
+  }
+  renderAll();
+}
+
+function playOffline(): HTMLElement[] {
+  const s = state.offline;
+  const top = h("div", { class: "eyebrow" }, t("off_eyebrow"));
+  switch (s.phase) {
+    case "needs-username": {
+      offlineNameInput.value = state.offlineName;
+      const ok = checkUsername(state.offlineName.trim()) === "ok";
+      const parts: HTMLElement[] = [top, ...heading(t("off_name_title"), t("off_name_text"))];
+      parts.push(
+        card(
+          "",
+          h("div", { class: "field" }, h("label", { class: "field-label", for: "offline-name" }, t("off_name_label")), offlineNameInput, offlineNameHint),
+          s.error ? h("p", { class: "hint hint-bad" }, icon("warning"), errorText(s.error)) : null,
+          h("div", { class: "card-row" }, button(t("off_continue"), () => void submitOfflineName(), { cls: "btn-primary", fk: "offline-continue", disabled: !ok }), linkButton(t("off_cancel"), () => void api.stopOffline().then(leaveOffline), { fk: "offline-cancel" })),
+        ),
+      );
+      queueMicrotask(updateOfflineNameFeedback);
+      return parts;
+    }
+    case "running":
+      return [
+        top,
+        ...heading(t("off_running_title"), t("off_running_text")),
+        // The runtime owns the local servers while the game runs and stops them itself when the game
+        // exits, so there is nothing to press here.
+        card("", h("p", { class: "card-text" }, t("off_running_close")), h("p", { class: "small-print" }, t("off_running_note"))),
+      ];
+    case "stopping":
+      return [top, ...heading(t("off_stopping_title"), null), card("", h("div", { class: "card-row" }, h("div", { class: "spinner", role: "presentation" }), t("off_stopping_wait")))];
+    case "stopped":
+      return [
+        top,
+        ...heading(t("off_stopped_title"), t("off_stopped_text")),
+        card("", h("div", { class: "card-row" }, button(t("off_again"), () => void startOffline(), { cls: "btn-primary", fk: "offline-again" }), linkButton(t("off_back"), leaveOffline, { fk: "offline-back" }))),
+      ];
+    case "error":
+      return [
+        top,
+        ...heading(t("off_error_title"), s.error ? errorText(s.error) : null),
+        card("", h("div", { class: "card-row" }, button(t("off_retry"), () => void startOffline(), { cls: "btn-primary", icon: "refresh", fk: "offline-retry" }), linkButton(t("off_back"), leaveOffline, { fk: "offline-back" }))),
+      ];
+    default: {
+      const at = OFFLINE_STEPS.findIndex((x) => x.phase === s.phase);
+      const steps = h(
+        "ol",
+        { class: "offline-steps" },
+        ...OFFLINE_STEPS.map((x, i) =>
+          h("li", { class: `offline-step ${i < at ? "is-done" : i === at ? "is-current" : ""}`.trim(), "aria-current": i === at ? "step" : undefined }, i < at ? icon("check") : i === at ? h("span", { class: "spinner", role: "presentation" }) : h("span", { class: "offline-dot", "aria-hidden": "true" }), tk(x.key)),
+        ),
+      );
+      const bar = h("div", { class: "offline-bar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(Math.round((s.progress ?? 0) * 100)), "aria-label": t("off_starting_title") }, h("span", {}));
+      (bar.firstChild as HTMLElement).style.width = `${Math.round((s.progress ?? 0) * 100)}%`;
+      return [
+        top,
+        ...heading(t("off_starting_title"), t("off_starting_text")),
+        // Cancel only before the game starts: once it is launching, the runtime keeps the stack.
+        card("", steps, s.progress !== undefined ? bar : null, s.phase !== "launching-game" ? h("div", { class: "card-row" }, linkButton(t("off_cancel"), () => void api.stopOffline(), { fk: "offline-cancel" })) : null),
+      ];
+    }
+  }
+}
+
+// The PLAY button's arrow and its one-item menu: "Play offline", or back to online play while the
+// Play page shows offline play. Locked while an online game or a download runs.
+const playMore = h("button", { type: "button", class: "play-more", id: "play-more", "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": "play-menu" }, icon("chevron_down"));
+const playMenu = h("div", { class: "play-menu", id: "play-menu", role: "menu", hidden: true });
+playMore.addEventListener("click", () => {
+  state.playMenu = !state.playMenu;
+  renderPlayMenu();
+});
+window.addEventListener("mousedown", (e) => {
+  if (state.playMenu && !playMore.contains(e.target as Node) && !playMenu.contains(e.target as Node)) {
+    state.playMenu = false;
+    renderPlayMenu();
+  }
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && state.playMenu) {
+    state.playMenu = false;
+    renderPlayMenu();
+    playMore.focus();
+  }
+});
+
+function renderPlayMenu(): void {
+  const snap = state.snap;
+  const locked = !snap || snap.game.running || snap.task !== null || snap.busy || offlineActive();
+  if (locked) state.playMenu = false;
+  playMore.disabled = locked;
+  playMore.title = t("off_more");
+  playMore.setAttribute("aria-label", t("off_more"));
+  playMore.setAttribute("aria-expanded", state.playMenu ? "true" : "false");
+  playMenu.hidden = !state.playMenu;
+  const item = state.offlineView
+    ? h("button", { type: "button", class: "play-menu-item", role: "menuitem", "data-fk": "play-online" }, icon("globe"), h("span", { class: "play-menu-label" }, t("off_menu_online")))
+    : h("button", { type: "button", class: "play-menu-item", role: "menuitem", "data-fk": "play-offline" }, icon("tunnel"), h("span", { class: "play-menu-label" }, t("off_menu_offline")));
+  item.addEventListener("click", () => (state.offlineView ? leaveOffline() : void startOffline()));
+  playMenu.replaceChildren(item);
+}
+
+function initPlayMenu(): void {
+  const wrap = h("div", { class: "play-split" });
+  primary.replaceWith(wrap);
+  wrap.append(primary, playMore, playMenu);
+}
+
 async function main(): Promise<void> {
   initChrome();
   buildScene();
@@ -1826,7 +2550,10 @@ async function main(): Promise<void> {
     renderActionBar();
   });
   api.onInviteLink(() => void checkInviteLink());
+  api.onOfflineStatus(onOfflineStatus);
+  initPlayMenu();
   onSnapshot(await api.getSnapshot());
+  onOfflineStatus(await api.offlineStatus());
   void api.setStatusPolling(!document.hidden);
   await checkInviteLink();
 }

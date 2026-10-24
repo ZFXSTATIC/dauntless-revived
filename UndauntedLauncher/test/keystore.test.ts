@@ -77,3 +77,17 @@ test("remove deletes the key whatever certificate it belongs to", async () => {
   await ks.remove(pub(FP_B));
   assert.equal(await ks.certificateOf(pub(FP_A)), null);
 });
+
+test("Documents recovery survives lost local key storage and keeps certificate binding", async () => {
+  const { dir } = store();
+  const recovery = path.join(dir, "Documents");
+  const primary = path.join(dir, "local");
+  const ks = new KeyStore(primary, enc, recovery);
+  await ks.save(pub(FP_A), KEY);
+  rmSync(primary, {recursive:true, force:true});
+  const restored = new KeyStore(primary, enc, recovery);
+  assert.equal(await restored.load(pub(FP_B)), null);
+  assert.equal(await restored.load(pub(FP_A)), KEY);
+  await restored.remove(pub(FP_A));
+  assert.equal(await restored.load(pub(FP_A)), null);
+});

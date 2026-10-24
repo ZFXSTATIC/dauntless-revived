@@ -1,5 +1,23 @@
 import { sql } from "drizzle-orm";
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+
+export const recoveryproofs = sqliteTable('recoveryproofs', {
+    discordId: text('discordId').primaryKey().notNull(),
+    userId: text('userId').unique().notNull(),
+    keyHash: text('keyHash').notNull()
+});
+export const recoverychallenges = sqliteTable('recoverychallenges', {
+    tokenHash: text('tokenHash').primaryKey().notNull(), discordId: text('discordId').notNull(),
+    userId: text('userId'), keyHash: text('keyHash'), expiresAt: integer('expiresAt').notNull(),
+    used: integer('used').notNull().default(0)
+});
+export const authepochs = sqliteTable('authepochs', {
+    userId: text('userId').primaryKey().notNull(), epoch: integer('epoch').notNull().default(0)
+});
+export const recoveryevents = sqliteTable('recoveryevents', {
+    id: integer('id').primaryKey({autoIncrement:true}), discordId: text('discordId').notNull(),
+    action: text('action').notNull(), createdAt: integer('createdAt').notNull()
+}, table=>[index('recoveryevents_actor_time').on(table.discordId,table.createdAt)]);
 
 export const users = sqliteTable("users", {
     userId: text("userId").notNull().primaryKey(),
@@ -8,11 +26,34 @@ export const users = sqliteTable("users", {
     isAdmin: integer("isAdmin", {mode: "boolean"}).notNull().default(false)
 })
 
+export const playeraddresses = sqliteTable('player_addresses', {
+    accountId:text('account_id').notNull(), address:text('address').notNull(), lastSeen:integer('last_seen').notNull()
+},t=>[primaryKey({columns:[t.accountId,t.address]})]);
+export const accountbans = sqliteTable('account_bans', {
+    accountId:text('account_id').notNull().primaryKey(),reason:text('reason').notNull(),address:text('address'),
+    active:integer('active').notNull(),updatedAt:integer('updated_at').notNull(),actor:text('actor').notNull(),expiresAt:integer('expires_at')
+},t=>[index('active_ban_address').on(t.address,t.active)]);
+export const accountdevicesignals = sqliteTable('account_device_signals', {
+    accountId:text('account_id').notNull(),kind:text('kind').notNull(),signalHash:text('signal_hash').notNull(),observedAt:integer('observed_at').notNull()
+},t=>[primaryKey({columns:[t.accountId,t.kind]})]);
+export const devicebansignals = sqliteTable('device_ban_signals', {
+    accountId:text('account_id').notNull(),kind:text('kind').notNull(),signalHash:text('signal_hash').notNull()
+},t=>[primaryKey({columns:[t.accountId,t.kind]}),index('device_ban_signal_match').on(t.kind,t.signalHash)]);
+export const moderationevents = sqliteTable('moderation_events', {
+    id:integer('id').primaryKey({autoIncrement:true}),accountId:text('account_id').notNull(),reason:text('reason').notNull(),
+    address:text('address'),active:integer('active').notNull(),createdAt:integer('created_at').notNull(),actor:text('actor').notNull(),expiresAt:integer('expires_at')
+});
+
 export const discordlinks = sqliteTable('discordlinks', {
     discordId: text('discordId').notNull().primaryKey(),
     userId: text('userId').notNull().unique().references(() => users.userId),
     linkedAt: text('linkedAt').notNull()
 });
+
+export const huntregions = sqliteTable('huntregions', {
+    userId: text('userId').notNull().primaryKey().references(() => users.userId),
+    region: text('region', {enum:['main','aus','ger','us']}).notNull()
+}, table => [check('huntregions_region', sql`${table.region} IN ('main', 'aus', 'ger', 'us')`)]);
 
 
 export const characters = sqliteTable("characters", {
@@ -89,7 +130,8 @@ export const inventorytransactions = sqliteTable("inventorytransactions", {
     response: text("response").notNull(),
     createdDate: text("createdDate").notNull()
 }, (table) => [
-    uniqueIndex("inventorytransactions_character_transaction_request").on(table.characterId, table.transactionId, table.requestHash)
+    uniqueIndex("inventorytransactions_character_transaction_request").on(table.characterId, table.transactionId, table.requestHash),
+    index("inventorytransactions_created_date").on(table.createdDate)
 ]);
 
 // Append-only log of every item change (triggers in the migration refuse UPDATE and DELETE)
@@ -324,6 +366,47 @@ export const storepurchases = sqliteTable("storepurchases", {
     index("storepurchases_account").on(table.accountId)
 ]);
 
+// Trials leaderboard runs (roadmap 3.8). One row is one completed run; entries is the
+// one-to-four player records the leaderboard needs. runKey makes a retried game-server
+// submission idempotent, while groupKey lets reads keep only each solo player or party's best run.
+// Current public identity used by the Trials leaderboard. The real service receives this
+// from POST /profile/update; it is deliberately separate from the account's canonical name.
+export const leaderboardprofiles = sqliteTable("leaderboardprofiles", {
+    accountId: text("accountId").notNull().primaryKey(),
+    epicId: text("epicId").notNull(),
+    platformId: text("platformId").notNull(),
+    platform: text("platform").notNull(),
+    displayName: text("displayName").notNull(),
+    updatedDate: text("updatedDate").notNull()
+});
+
+export const trialruns = sqliteTable("trialruns", {
+    id: integer("id").notNull().primaryKey({autoIncrement: true}),
+    trialId: text("trialId").notNull(),
+    trialWeek: integer("trialWeek").notNull(),
+    difficulty: integer("difficulty").notNull(),
+    mode: text("mode").notNull(),
+    runKey: text("runKey").notNull(),
+    groupKey: text("groupKey").notNull(),
+    completionTime: integer("completionTime").notNull(),
+    objectivesCompleted: integer("objectivesCompleted").notNull(),
+    sessionId: text("sessionId").notNull(),
+    entries: text("entries").notNull(),
+    submittedDate: text("submittedDate").notNull()
+}, (table) => [
+    uniqueIndex("trialruns_week_trial_difficulty_run").on(table.trialWeek, table.trialId, table.difficulty, table.runKey),
+    index("trialruns_board").on(table.trialWeek, table.trialId, table.difficulty, table.mode, table.completionTime),
+    index("trialruns_group").on(table.trialWeek, table.trialId, table.difficulty, table.mode, table.groupKey)
+]);
+
+// A completed week is finalized once. The count is diagnostic; Champion access itself is
+// the permanent trials_leaderboard_placement entitlement granted to every Top-100 player.
+export const trialweeks = sqliteTable("trialweeks", {
+    week: integer("week").notNull().primaryKey(),
+    finalizedDate: text("finalizedDate").notNull(),
+    awardedAccounts: integer("awardedAccounts").notNull()
+});
+
 // Guilds (roadmap 3.11, the 1.4.4 client's v2 guild API; docs/findings/social.md). guildId is a
 // random UUID (it also names the chat room Guild-<guildId>). nameKey and nameplateKey are lowercase
 // copies for case-insensitive uniqueness; nameplateKey is NULL for a guild without a nameplate
@@ -399,3 +482,16 @@ export const slayerlinks = sqliteTable("slayerlinks", {
     index("slayerlinks_sender").on(table.senderId),
     index("slayerlinks_target").on(table.targetId)
 ]);
+
+// One-time data jobs the metagame ran at startup (migrations may only add tables, so a build can be
+// rolled back); a job whose id is here is never run again
+export const onetimejobs = sqliteTable("onetimejobs", {
+    jobId: text("jobId").notNull().primaryKey(),
+    doneDate: text("doneDate").notNull()
+});
+
+export const accountkeyrecovery = sqliteTable("accountkeyrecovery", {
+    userId: text("userId").notNull().primaryKey(),
+    keyHash: text("keyHash").notNull(),
+    ciphertext: text("ciphertext").notNull()
+});

@@ -74,6 +74,6 @@ export function BackendRuntimeHealth() {
         memoryMB: { rss: process.memoryUsage().rss / 1048576, heapUsed: process.memoryUsage().heapUsed / 1048576 },
         requests: requestMetrics.snapshot(),
         eventLoop: delay && delay.count > 0 ? { p50Ms: delay.percentile(50) / 1e6, p95Ms: delay.percentile(95) / 1e6, maxMs: delay.max / 1e6 } : null,
-        bans: { supported: false, count: null }
+        bans: { supported: true, count: null }
     };
 }

@@ -3,8 +3,8 @@
 import { promises as fsp, readFileSync } from "node:fs";
 import path from "node:path";
 import { isPrivateModeHost, isValidFingerprint, isValidHost, isValidInviteCode, isValidShareUrl, cleanServerName, type ServerMode } from "../shared/invite";
-import { isValidUsername } from "../shared/username";
-import { DEFAULT_GRAPHICS, EXPOSURE_MODES, GRAPHICS_PRESETS, type ExposureMode, type GraphicsPreset, type Language } from "../shared/types";
+import { cleanText } from "../shared/status";
+import { DEFAULT_GRAPHICS, EXPOSURE_MODES, GAME_LANGUAGES, GRAPHICS_PRESETS, LANGUAGES, type ExposureMode, type GameLanguage, type GraphicsPreset, type Language } from "../shared/types";
 
 export interface StoredServer {
   mode: ServerMode;
@@ -16,15 +16,33 @@ export interface StoredServer {
   code: string | null; // invite code not used yet
 }
 
+// The project's main server. Adopted when no server is stored yet (a fresh install or a new
+// device), so a returning player can reach Dauntless Revived and sign in with their account key
+// without an invite. fp is the SHA-256 of the server's TLS certificate (DER), 64 lower-case hex.
+export const DEFAULT_SERVER: StoredServer = {
+  mode: "public",
+  host: "82.153.118.176",
+  port: 443,
+  name: "Dauntless Revived",
+  share: null,
+  fp: "9d25e5cfc3462af09ba9d83f815191a8e682401899891563ab01815beec6e988",
+  code: null,
+};
+
 export interface StoredSettings {
+  huntRegion?: 'auto' | 'main' | 'ger' | 'us';
   version: 1;
   server: StoredServer | null;
+  savedServers: StoredServer[]; // servers joined before, to switch back without the invite
   installDir: string | null; // null = the default folder
   verifiedDir: string | null; // the folder whose files were last fully checked or downloaded
   graphics: GraphicsPreset;
   exposure: ExposureMode;
   windowed: boolean;
+  streamerMode: boolean; // hide addresses, fingerprints, paths and player names on screen
   language: Language;
+  gameLanguage: GameLanguage;
+  showConsole: boolean;
   usernames: Record<string, string>; // per server id, for display only
   backupOffered: Record<string, boolean>; // per server id: the one-time backup offer was shown
 }
@@ -33,12 +51,16 @@ export function defaultSettings(language: Language): StoredSettings {
   return {
     version: 1,
     server: null,
+    savedServers: [],
     installDir: null,
     verifiedDir: null,
     graphics: DEFAULT_GRAPHICS,
     exposure: "game",
     windowed: false,
+    streamerMode: false,
     language,
+    gameLanguage: "auto",
+    showConsole: false,
     usernames: {},
     backupOffered: {},
   };
@@ -55,38 +77,70 @@ function validDir(v: unknown, platform: NodeJS.Platform = process.platform): str
   return null;
 }
 
+export const MAX_SAVED_SERVERS = 20;
+
+function sanitizeServer(sv: unknown): StoredServer | null {
+  if (!isObject(sv)) return null;
+  const name = typeof sv.name === "string" ? cleanServerName(sv.name) : null;
+  const mode: ServerMode = sv.mode === "public" ? "public" : "private";
+  // Private mode is plain HTTP: only into the tailnet (or loopback), as parseInvite enforces.
+  const hostOk = typeof sv.host === "string" && isValidHost(sv.host) && (mode === "public" || isPrivateModeHost(sv.host));
+  const portOk = Number.isInteger(sv.port) && (sv.port as number) >= 1 && (sv.port as number) <= 65535;
+  // A public server without a valid fingerprint is dropped: it could never be reached safely.
+  const fpOk = mode === "private" || isValidFingerprint(sv.fp);
+  if (!hostOk || !portOk || !fpOk || !name) return null;
+  return {
+    mode,
+    host: sv.host as string,
+    port: sv.port as number,
+    name,
+    share: mode === "private" && typeof sv.share === "string" && isValidShareUrl(sv.share) ? sv.share : null,
+    fp: mode === "public" ? (sv.fp as string) : null,
+    code: typeof sv.code === "string" && isValidInviteCode(sv.code) ? sv.code : null,
+  };
+}
+
+// The same server (and the same account key slot): mode, host and port.
+export function sameServer(a: StoredServer, b: StoredServer): boolean {
+  return a.mode === b.mode && a.host === b.host && a.port === b.port;
+}
+
 export function sanitizeSettings(raw: unknown, language: Language, platform: NodeJS.Platform = process.platform): StoredSettings {
   const s = defaultSettings(language);
   if (!isObject(raw)) return s;
-  if (isObject(raw.server)) {
-    const sv = raw.server;
-    const name = typeof sv.name === "string" ? cleanServerName(sv.name) : null;
-    const mode: ServerMode = sv.mode === "public" ? "public" : "private";
-    // Private mode is plain HTTP: only into the tailnet (or loopback), as parseInvite enforces.
-    const hostOk = typeof sv.host === "string" && isValidHost(sv.host) && (mode === "public" || isPrivateModeHost(sv.host));
-    const portOk = Number.isInteger(sv.port) && (sv.port as number) >= 1 && (sv.port as number) <= 65535;
-    // A public server without a valid fingerprint is dropped: it could never be reached safely.
-    const fpOk = mode === "private" || isValidFingerprint(sv.fp);
-    if (hostOk && portOk && fpOk && name) {
-      s.server = {
-        mode,
-        host: sv.host as string,
-        port: sv.port as number,
-        name,
-        share: mode === "private" && typeof sv.share === "string" && isValidShareUrl(sv.share) ? sv.share : null,
-        fp: mode === "public" ? (sv.fp as string) : null,
-        code: typeof sv.code === "string" && isValidInviteCode(sv.code) ? sv.code : null,
-      };
+  s.server = sanitizeServer(raw.server);
+  if (Array.isArray(raw.savedServers)) {
+    for (const entry of raw.savedServers) {
+      const sv = sanitizeServer(entry);
+      if (sv && !s.savedServers.some((o) => sameServer(o, sv)) && s.savedServers.length < MAX_SAVED_SERVERS) s.savedServers.push(sv);
     }
+  }
+  // The current server is always in the list, as it is now (a newer invite or name replaces the old entry).
+  if (s.server) {
+    const current = s.server;
+    const i = s.savedServers.findIndex((o) => sameServer(o, current));
+    if (i >= 0) s.savedServers[i] = { ...current };
+    else s.savedServers.unshift({ ...current });
+    s.savedServers = s.savedServers.slice(0, MAX_SAVED_SERVERS);
   }
   s.installDir = validDir(raw.installDir, platform);
   s.verifiedDir = validDir(raw.verifiedDir, platform);
   if (GRAPHICS_PRESETS.includes(raw.graphics as GraphicsPreset)) s.graphics = raw.graphics as GraphicsPreset;
   if (EXPOSURE_MODES.includes(raw.exposure as ExposureMode)) s.exposure = raw.exposure as ExposureMode;
   s.windowed = raw.windowed === true;
-  if (raw.language === "en" || raw.language === "fi") s.language = raw.language;
+  s.streamerMode = raw.streamerMode === true;
+  s.showConsole = raw.showConsole === true;
+  if (raw.huntRegion === 'aus') s.huntRegion = 'us'; // Migrate the retired region once when loading old settings.
+  if (raw.huntRegion === 'auto' || raw.huntRegion === 'main' || raw.huntRegion === 'ger' || raw.huntRegion === 'us') s.huntRegion = raw.huntRegion;
+  if (LANGUAGES.includes(raw.language as Language)) s.language = raw.language as Language;
+  if (GAME_LANGUAGES.includes(raw.gameLanguage as GameLanguage)) s.gameLanguage = raw.gameLanguage as GameLanguage;
   if (isObject(raw.usernames)) {
-    for (const [k, v] of Object.entries(raw.usernames)) if (/^[0-9a-f]{24}$/.test(k) && isValidUsername(v)) s.usernames[k] = v;
+    // Authenticated display names may predate registration rules or be renamed by
+    // an admin. Match GetUserInfo's safe display-text contract, not its signup form.
+    for (const [k, v] of Object.entries(raw.usernames)) {
+      const name = cleanText(v, 32);
+      if (/^[0-9a-f]{24}$/.test(k) && name !== null && name === v) s.usernames[k] = name;
+    }
   }
   if (isObject(raw.backupOffered)) {
     for (const [k, v] of Object.entries(raw.backupOffered)) if (/^[0-9a-f]{24}$/.test(k) && v === true) s.backupOffered[k] = true;

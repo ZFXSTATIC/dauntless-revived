@@ -532,7 +532,7 @@ try {
             Copy-Item -LiteralPath $f.FullName -Destination $P.Bin -Force
         }
         New-Item -ItemType Directory -Force -Path (Join-Path $P.Bin 'lib') | Out-Null
-        Copy-Item -Path (Join-Path $PSScriptRoot 'lib\*.js') -Destination (Join-Path $P.Bin 'lib') -Force
+        Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'lib') -File | Where-Object { $_.Extension -in '.js', '.cjs' } | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $P.Bin 'lib') -Force }
     }
     Write-DROk "folders under $Root"
 
@@ -998,6 +998,7 @@ try {
     $meta['BIND_HOST'] = $BindIp
     $meta['AUTH_MODE'] = 'APIKEY'
     $meta['DB_FILENAME'] = & $fwd $P.Db
+    $meta['BACKUP_ROOT'] = & $fwd $P.Backups
     $meta['TARGET_CHANGELIST'] = $DRPinned.Changelist
     # Public mode: every friend's launcher relays the game's traffic from its own 127.0.0.1:61000.
     $meta['QOS_TARGET_URL'] = if ($Public) { "http://127.0.0.1:$DRRelayPort/QoS" } else { "http://${BindIp}:$($ports.metagame)/QoS" }
@@ -1027,6 +1028,7 @@ try {
     $deploy['GAMESERVER_BINARY_PATH'] = & $fwd $exe
     $deploy['METAGAME_API_KEY'] = $gsKey
     if (-not $deploy['SECONDS_TO_WAIT_BETWEEN_GAMESERVER_STARTUP']) { $deploy['SECONDS_TO_WAIT_BETWEEN_GAMESERVER_STARTUP'] = '10' }
+    if (-not $deploy.Contains('RAMSGATE_POOL')) { $deploy['RAMSGATE_POOL'] = '1' }
     if (-not $deploy.Contains('ENABLE_DOJO')) { $deploy['ENABLE_DOJO'] = '0' }
     $deploy['NODE_ENV'] = 'production'
 

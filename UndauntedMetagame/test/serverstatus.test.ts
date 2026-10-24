@@ -127,6 +127,16 @@ describe("ServerStatus", () => {
         ClearServerStatusCache();
     });
 
+    it('uses native occupancy for instance counts, including an explicit zero', async () => {
+        Fake!.Servers[0].connectedPlayers=7;
+        Fake!.Servers[1].connectedPlayers=0;
+        try {
+            const status=await BuildServerStatus();
+            assert.equal(status.instances.find(s=>s.id===Fake!.Servers[0].id)?.players,7);
+            assert.equal(status.instances.find(s=>s.id===Fake!.Servers[1].id)?.players,0);
+        } finally {delete Fake!.Servers[0].connectedPlayers;delete Fake!.Servers[1].connectedPlayers;}
+    });
+
     it("lists who is where and the three servers, with titles and per-server counts", async () => {
         const Status = await BuildServerStatus();
 
@@ -307,4 +317,13 @@ describe("SoftAccountAuth", () => {
         assert.equal(await Run({ authorization: Token }), false, "no bearer scheme");
         assert.equal(await Run({ authorization: `bearer ${SignMetagameJWTForUid("UID-soft-deleted")}` }), false, "the account does not exist");
     });
+});
+
+it("attributes multiple Ramsgates by the player's allocated port", async () => {
+    const {SelectPersistentInstance} = await import('../src/controllers/serverstatus');
+    const main={port:8777}, worker={port:8761};
+    assert.equal(SelectPersistentInstance([main,worker],8761),worker);
+    assert.equal(SelectPersistentInstance([main,worker],8777),main);
+    assert.equal(SelectPersistentInstance([main,worker],undefined),main);
+    assert.equal(SelectPersistentInstance([],8761),undefined);
 });

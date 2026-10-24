@@ -161,7 +161,8 @@ test("the icons and in-app images are current copies of brand/", () => {
   const forge = readFileSync(path.join(ROOT, "forge.config.ts"), "utf8");
   assert.match(forge, /icon: "assets\/icon"/);
   assert.match(forge, /setupIcon: "assets\/icon\.ico"/);
-  assert.match(forge, /extraResource:\s*\[[^\]]*"assets\/icon\.png"/);
+  assert.match(forge, /const launcherResources\s*=\s*\[[^\]]*"assets\/icon\.png"/);
+  assert.match(forge, /extraResource:\s*launcherResources/);
 });
 
 test("the page's images are local brand files, and the logo has a translated text alternative", () => {

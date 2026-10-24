@@ -1,0 +1,3 @@
+# Store and check out every file here byte-for-byte: manifest.json pins their SHA-256, so
+# line-ending conversion (core.autocrlf) would make the installers reject them.
+* -text

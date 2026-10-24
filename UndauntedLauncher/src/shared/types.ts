@@ -6,7 +6,9 @@ import type { ServerMode } from "./invite";
 
 export type { ServerMode };
 
-export type Language = "en" | "fi";
+// The launcher's own languages: English and Finnish, plus every language the 1.4.4 client has text for.
+export type Language = "en" | "fi" | "de" | "es" | "fr" | "it" | "ja" | "pt" | "ru";
+export const LANGUAGES: readonly Language[] = ["en", "fi", "de", "es", "fr", "it", "ja", "pt", "ru"];
 
 // -1 = leave graphics to the in-game menu, 0..4 = Low, Medium, High, Epic, Cinematic.
 export type GraphicsPreset = -1 | 0 | 1 | 2 | 3 | 4;
@@ -17,6 +19,11 @@ export const DEFAULT_GRAPHICS: GraphicsPreset = 4;
 // and is an opt-in experiment for the blown-out pre-hunt airship.
 export type ExposureMode = "game" | "basic";
 export const EXPOSURE_MODES: readonly ExposureMode[] = ["game", "basic"];
+
+// The game's own text language, sent to it as -epiclocale. The 1.4.4 client ships text for exactly
+// these cultures (Archon/Content/Localization/Game/<culture>); "auto" follows the operating system.
+export type GameLanguage = "auto" | "en-US" | "de-DE" | "es-ES" | "fr-FR" | "it-IT" | "ja-JP" | "pt-BR" | "ru-RU";
+export const GAME_LANGUAGES: readonly GameLanguage[] = ["auto", "en-US", "de-DE", "es-ES", "fr-FR", "it-IT", "ja-JP", "pt-BR", "ru-RU"];
 
 export type Phase =
   | "loading"
@@ -37,8 +44,11 @@ export type ConnectProblem =
   | null;
 
 export type ErrorCode =
+  | "account_banned"
   | "invite_invalid_format"
   | "invite_invalid"
+  | "invite_required"
+  | "invite_applied"
   | "username_invalid"
   | "username_taken"
   | "registration_closed"
@@ -65,16 +75,21 @@ export type ErrorCode =
   | "launch_failed"
   | "windows_runtime_missing"
 
+
   | "compat_runtime_missing"
   | "config_failed"
   | "busy"
+  | "offline_save_invalid" // the file picked to restore is not an offline save
   | "cancelled"
   | "cert_mismatch"
   | "cert_changed" // a public invite whose certificate differs from the one this PC's key belongs to
   | "rate_limited"
   | "relay_port_busy"
   | "relay_failed"
-  | "unknown";
+  | "unknown"
+  | "offline_unavailable"
+  | "offline_insufficient_memory"
+
 
 // Short messages that are not errors.
 export type NoticeCode = "keep_open" | "backup_saved" | "repair_done" | "install_done";
@@ -83,6 +98,24 @@ export interface LauncherError {
   code: ErrorCode;
   // Extra detail for the message, e.g. a file path or a byte count. Never a key.
   detail?: string;
+}
+
+// Offline play (Discussion #57): the local runtime's state, as agreed with its author.
+export type OfflinePhase =
+  | "preparing"
+  | "starting-metagame"
+  | "starting-deploy"
+  | "needs-username" // first offline start only: no local account yet
+  | "launching-game"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "error";
+
+export interface OfflineStatus {
+  phase: OfflinePhase;
+  progress?: number; // 0..1 when meaningful
+  error?: LauncherError;
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: LauncherError };
@@ -118,17 +151,33 @@ export interface ServerInfo {
   fingerprint: string | null; // public mode: the pinned certificate fingerprint (not secret)
 }
 
+// A server joined before, for switching back to it without the invite.
+export interface SavedServerInfo {
+  id: string; // the account key slot id (not secret)
+  mode: ServerMode;
+  host: string;
+  port: number;
+  name: string;
+  current: boolean;
+  username: string | null;
+}
+
 export interface Settings {
+  huntRegion?: 'auto' | 'main' | 'ger' | 'us';
   graphics: GraphicsPreset;
   exposure: ExposureMode;
   windowed: boolean;
   language: Language;
+  gameLanguage: GameLanguage;
+  showConsole: boolean; // the DLL's log window, normally hidden (DR_SHOW_CONSOLE=1)
+  streamerMode?: boolean; // hide addresses, fingerprints, paths and player names on screen
 }
 
 export interface Snapshot {
   phase: Phase;
   busy: boolean;
   server: ServerInfo | null;
+  savedServers: SavedServerInfo[];
   connect: {
     checking: boolean;
     problem: ConnectProblem;
@@ -210,8 +259,11 @@ export const IPC = {
   submitInvite: "dr:submit-invite",
   retryConnect: "dr:retry-connect",
   forgetServer: "dr:forget-server",
+  switchServer: "dr:switch-server",
+  removeSavedServer: "dr:remove-saved-server",
   register: "dr:register",
   useExistingKey: "dr:use-existing-key",
+  setInviteCode: "dr:set-invite-code",
   importKeyFile: "dr:import-key-file",
   saveKeyBackup: "dr:save-key-backup",
   dismissBackupOffer: "dr:dismiss-backup-offer",
@@ -224,6 +276,9 @@ export const IPC = {
   cancelTask: "dr:cancel-task",
   repair: "dr:repair",
   play: "dr:play",
+  startOffline: "dr:start-offline",
+  stopOffline: "dr:stop-offline",
+  offlineStatus: "dr:offline-status",
   setSettings: "dr:set-settings",
   setStatusPolling: "dr:set-status-polling",
   refreshStatus: "dr:refresh-status",
@@ -239,8 +294,11 @@ export const IPC = {
   takeInviteLink: "dr:take-invite-link",
   dismissNotice: "dr:dismiss-notice",
   dismissError: "dr:dismiss-error",
+  offlineExportSave: "dr:offline-export-save",
+  offlineImportSave: "dr:offline-import-save",
   // events
   inviteLink: "dr:invite-link",
+  offlineStatusChanged: "dr:offline-status-changed",
   snapshot: "dr:snapshot",
   progress: "dr:progress",
   windowState: "dr:window-state",

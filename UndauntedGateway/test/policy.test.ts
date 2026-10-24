@@ -4,6 +4,13 @@ import { CanonicalPath, CheckPath, Classify, HasBearer } from "../src/policy";
 import { IsPublicRoute, UndauntedApiRoutes } from "./helpers";
 
 describe("the /undaunted/api routes", () => {
+    it("allows only POST device checks; upstream still decides authentication and bans", () => {
+        assert.equal(Classify("POST", "/undaunted/api/DeviceSignals", {}, false).action,"proxy");
+        for(const method of ["GET","HEAD","PUT","DELETE"]){
+            const result=Classify(method,"/undaunted/api/DeviceSignals",{},false);
+            assert.ok(result.action==="reject" && result.status===403);
+        }
+    });
     const Routes = UndauntedApiRoutes();
 
     it("the metagame source still has the routes this gateway knows about", () => {
@@ -78,6 +85,15 @@ describe("Classify", () => {
         assert.equal((Classify("POST", "/account/api/oauth/verify", {}, false) as any).feed, undefined);
     });
 
+    it("only POST game login receives the bearer-required allowlist feed", () => {
+        for(const route of ["/game/login", "/GAME/LOGIN/", "/game/login?x=1"]){
+            assert.equal((Classify("POST", route, {}, false) as any).feed, "heartbeat");
+        }
+        for(const [method, route] of [["GET", "/game/login"], ["POST", "/game/loginx"], ["POST", "/game/login/extra"]]){
+            assert.equal((Classify(method, route, {}, false) as any).feed, undefined);
+        }
+    });
+
     it("puts Register and the token route in their own rate-limit classes", () => {
         assert.equal(Classify("POST", "/undaunted/api/Register", {}, false).limitClass, "register");
         assert.equal(Classify("POST", "/undaunted/api/register/", {}, false).limitClass, "register");
@@ -122,7 +138,7 @@ describe("path helpers", () => {
         for(const Good of ["/", "/heartbeat", "/progression/UID-00000000-0000-4000-8000-00000000f609", "/inventory/x/dauntlessrel-1.4.4:239827", "/motd/", "/a.b/c..d/.e"]){
             assert.equal(CheckPath(Good), "ok", Good);
         }
-        for(const Bad of ["/a/../b", "/a/./b", "/..", "/a/..", "/a\\b", "/a b", "/a\tb", "/a%2Fb", "/a%5cb", "/a%00", "/a/%2e%2e/b", "/a/%2E/b"]){
+        for(const Bad of ["/a/../b", "/a/./b", "/..", "/a/..", "/a\\b", "/a\u0000b", "/a\tb", "/a%2Fb", "/a%5cb", "/a%00", "/a/%2e%2e/b", "/a/%2E/b"]){
             assert.equal(CheckPath(Bad), "bad_path", Bad);
         }
     });

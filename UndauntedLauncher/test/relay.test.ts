@@ -7,8 +7,11 @@ import http from "node:http";
 import https from "node:https";
 import net from "node:net";
 import { createHash, randomBytes } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type { Duplex } from "node:stream";
 import { filterHeaders, Relay, RelayError } from "../src/main/relay";
+import { createRelayOwnerCheck } from "../src/main/relay-owner";
 import { makeTestCert, type TestCert } from "./certs";
 
 const UPSTREAM_PORT = 62401;
@@ -210,6 +213,70 @@ function headerValues(raw: string[], name: string): string[] {
   for (let i = 0; i < raw.length; i += 2) if (raw[i].toLowerCase() === name) out.push(raw[i + 1]);
   return out;
 }
+
+test("process guard denies HTTP and WebSocket requests before forwarding, including lookup errors", async () => {
+  const guarded = new Relay({
+    target: { host: "127.0.0.1", port: UPSTREAM_PORT, fingerprint: cert.fingerprint }, port: 0,
+    authorizeConnection: async () => { throw new Error("lookup unavailable"); },
+  });
+  await guarded.start();
+  const count = seen.length;
+  try {
+    const res = await call(guarded.port!, { method: "POST", path: "/account/api/oauth/token", body: "fake-key" });
+    assert.equal(res.status, 403);
+    assert.match(res.body.toString(), /local_process_denied/);
+    const upgraded = await new Promise<string>((resolve, reject) => {
+      const socket = net.connect(guarded.port!, "127.0.0.1", () => {
+        socket.write(`GET /chat HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
+      });
+      let data = "";
+      socket.on("data", chunk => { data += chunk; });
+      socket.on("end", () => resolve(data));
+      socket.on("error", reject);
+      socket.setTimeout(3000, () => socket.destroy(new Error("guard timed out")));
+    });
+    assert.match(upgraded, /^HTTP\/1.1 403/);
+    assert.equal(seen.length, count);
+  } finally { await guarded.stop(); }
+});
+
+test("Windows relay accepts the approved process but rejects a real PowerShell exporter request", { skip: process.platform !== "win32" }, async () => {
+  const owner = createRelayOwnerCheck();
+  let checks = 0;
+  const guarded = new Relay({
+    target: { host: "127.0.0.1", port: UPSTREAM_PORT, fingerprint: cert.fingerprint }, port: 0,
+    authorizeConnection: socket => { checks++; return owner(socket, process.pid); },
+  });
+  await guarded.start();
+  const keepAlive = new http.Agent({ keepAlive: true, maxSockets: 1 });
+  try {
+    for (let n = 0; n < 2; n++) {
+      await new Promise<void>((resolve, reject) => {
+        http.get({ host: "127.0.0.1", port: guarded.port!, path: "/echo", agent: keepAlive }, res => {
+          assert.equal(res.statusCode, 200);
+          res.resume(); res.on("end", resolve);
+        }).on("error", reject);
+      });
+    }
+    assert.equal(checks, 1, "keep-alive requests reuse only their own socket's verdict");
+    const ws = new WebSocket(`ws://127.0.0.1:${guarded.port}/ws`);
+    try {
+      const reply = await new Promise<string>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("guarded chat timed out")), 5000);
+        ws.addEventListener("open", () => ws.send("guarded chat"));
+        ws.addEventListener("message", event => { clearTimeout(timer); resolve(String(event.data)); }, { once: true });
+        ws.addEventListener("error", () => { clearTimeout(timer); reject(new Error("guarded chat failed")); }, { once: true });
+      });
+      assert.equal(reply, "echo:guarded chat");
+    } finally { ws.close(); }
+    assert.equal(checks, 2, "chat's socket is separately authorized");
+    const count = seen.length;
+    const script = `try { Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'http://127.0.0.1:${guarded.port}/account/api/oauth/token' -Body 'grant_type=exchange_code&exchange_code=fake-key' -TimeoutSec 5 | Out-Null; exit 1 } catch { if ([int]$_.Exception.Response.StatusCode -eq 403) { exit 0 }; exit 2 }`;
+    await promisify(execFile)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, timeout: 10000 });
+    assert.equal(seen.length, count, "exporter login never reaches the upstream");
+    assert.equal(checks, 3);
+  } finally { keepAlive.destroy(); await guarded.stop(); }
+});
 
 test("forwards method, path, query, headers and body over the pinned TLS connection", async () => {
   const body = randomBytes(256 * 1024);

@@ -177,7 +177,8 @@ describe("T5: the leader picks a hunt; the whole party lands on one server", () 
 
         const Joined = await Join(B, { gameMode: "ISLAND", isPrivate: false, partyId: PartyB, hunts: ["CR19_MatchmakerHunt_Host_Beta"], playerHuntId: HUNT });
         assert.equal(Joined.status, 200);
-        assert.deepEqual(Object.keys(Joined.json), ["candidateId", "gameMode", "huntId", "status", "statusReason"]);
+        assert.deepEqual(Object.keys(Joined.json), ["candidateId", "candidateStatusPeriodMillis", "gameMode", "huntId", "status", "statusReason"]);
+        assert.equal(Joined.json.candidateStatusPeriodMillis, 1000);
         assert.deepEqual([Joined.json.status, Joined.json.gameMode, Joined.json.huntId], ["MATCHING", "ISLAND", HUNT]);
         CandidateId = Joined.json.candidateId;
 
@@ -195,7 +196,7 @@ describe("T5: the leader picks a hunt; the whole party lands on one server", () 
 
         // A member's client may follow by joining the candidate by id (the exe's CandidateJoin)
         const Follow = await Call("POST", `/candidate/join/${CandidateId}`, { as: C, body: { buildId: BUILD.buildId } });
-        assert.deepEqual([Follow.status, Follow.json], [200, { candidateId: CandidateId, gameMode: "ISLAND", huntId: HUNT, status: "MATCHING", statusReason: null }]);
+        assert.deepEqual([Follow.status, Follow.json], [200, { candidateId: CandidateId, candidateStatusPeriodMillis: 1000, gameMode: "ISLAND", huntId: HUNT, status: "MATCHING", statusReason: null }]);
         assert.equal((await Call("POST", `/candidate/join/${CandidateId}`, { as: ADMIN, body: {} })).status, 404, "not a member of it");
         assert.equal(Deploy.Calls.length, 1);
 
@@ -204,7 +205,7 @@ describe("T5: the leader picks a hunt; the whole party lands on one server", () 
             assert.equal(Polled.status, 200);
             assert.deepEqual(Polled.json, {
                 candidateId: CandidateId,
-                candidateStatusPeriodMillis: 10000,
+                candidateStatusPeriodMillis: 1000,
                 gameMode: "ISLAND",
                 huntId: HUNT,
                 playerStates: { [B]: {}, [A]: {}, [C]: {} },
@@ -519,12 +520,12 @@ describe("one queued join per player (the 22 September 2026 two-player test)", (
         const Again = await HuntJoin(A);
         assert.equal((await Call("DELETE", "/candidate", { as: A })).status, 404);
         assert.notEqual(Again.json.candidateId, Stale.json.candidateId);
-        Offset += 17 * 1000;
+        Offset += 4 * 1000;
         assert.equal((await HuntJoin(B)).status, 200);
         assert.equal((await Call("DELETE", "/candidate", { as: B })).status, 404);
-        assert.equal(Deploy.Calls.length, Before, "the queue waits 20 s after its last join");
+        assert.equal(Deploy.Calls.length, Before, "the queue waits five seconds after its first join");
 
-        Offset += 21 * 1000;
+        Offset += 1 * 1000;
         const PolledO = await Status(B);
         const PolledV = await Status(A);
         assert.equal(Deploy.Calls.length, Before + 1, "one hunt server");

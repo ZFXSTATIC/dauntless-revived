@@ -12,7 +12,7 @@ import { gameserverapikeys, userapikeys, users } from "../src/db/schema";
 import { HashUserAPIKey, SignMetagameJWTForUid } from "../src/controllers/auth";
 import { CreateCharacterForUid } from "../src/controllers/character";
 import { CheckMatchmakingInput } from "../src/controllers/matchmaking";
-import { CheckGatewayConfig, ClientAddressOf, IsDirectLocalRequest, IsProxiedRequest, IsTrustedGatewayRequest } from "../src/middleware/RequestOrigin";
+import { CheckGatewayConfig, ClientAddressOf, DescribeOrigin, IsDirectLocalRequest, IsProxiedRequest, IsTrustedGatewayRequest } from "../src/middleware/RequestOrigin";
 import { Count, ReadCharacter } from "./helpers";
 
 // Permission audit (C:\dr\data\plans\route-audit.md): every route is listed with its auth,
@@ -31,6 +31,32 @@ const A = "UID-real-a", B = "UID-real-b", C = "UID-stub-c", ADMIN = "UID-admin";
 type Player = { UserId: string, Key: string, Token: string, CharacterId: string };
 const Players: Record<string, Player> = {};
 
+it('device reports require an account key, reject supplied identities and limit requests', async () => {
+    process.env.DEVICE_SIGNAL_HMAC_KEY='cd'.repeat(32);
+    try {
+        assert.equal((await Call('POST','/undaunted/api/DeviceSignals',{body:{}})).status,401);
+        assert.equal((await Call('POST','/undaunted/api/DeviceSignals',{key:Players[A].Key,body:{accountId:B}})).status,400);
+        assert.equal((await Call('POST','/undaunted/api/DeviceSignals',{key:Players[A].Key,body:{smbiosUuid:'12345678-1234-5678-9abc-123456789abc'}})).status,204);
+        assert.equal((GetDb().$client.prepare('SELECT count(*) n FROM account_device_signals WHERE account_id=?').get(B) as any).n,0);
+        for(let i=0;i<8;i++)assert.equal((await Call('POST','/undaunted/api/DeviceSignals',{key:Players[A].Key,body:{}})).status,204);
+        assert.equal((await Call('POST','/undaunted/api/DeviceSignals',{key:Players[A].Key,body:{}})).status,429);
+    } finally { delete process.env.DEVICE_SIGNAL_HMAC_KEY; }
+});
+
+it('hunt region changes require the account key and cannot target another account', async () => {
+    process.env.US_REGION='1';
+    try {
+        assert.equal((await Call('POST','/undaunted/api/HuntRegion',{body:{region:'us'}})).status,401);
+        assert.equal((await Call('POST','/undaunted/api/HuntRegion',{key:Players[A].Key,body:{region:'remote'}})).status,400);
+        assert.equal((await Call('POST','/undaunted/api/HuntRegion',{key:Players[A].Key,body:{region:'us',userId:B}})).status,200);
+        assert.equal((await Call('GET','/undaunted/api/HuntRegion',{key:Players[A].Key})).json.region,'us');
+        assert.equal((await Call('GET','/undaunted/api/HuntRegion',{key:Players[B].Key})).json.region,'main');
+        assert.equal((await Call('POST','/undaunted/api/HuntRegion',{key:Players[A].Key,body:{region:'main'}})).status,200);
+    } finally { delete process.env.US_REGION; }
+    assert.equal((await Call('POST','/undaunted/api/HuntRegion',{key:Players[A].Key,body:{region:'us'}})).status,503);
+    assert.equal((await Call('POST','/undaunted/api/HuntRegion',{key:Players[A].Key,body:{region:'aus'}})).status,410);
+});
+
 it('dashboard account directory exposes names and short fingerprints, never login keys or full hashes', async () => {
     const reply = await Call('GET', '/undaunted/api/DashboardAccounts?offset=0', {key: Players[ADMIN].Key});
     assert.equal(reply.status, 200);
@@ -41,7 +67,16 @@ it('dashboard account directory exposes names and short fingerprints, never logi
     assert.equal(reply.text.includes(Players[A].Key), false);
     assert.equal(reply.text.includes(HashUserAPIKey(Players[A].Key)), false);
     assert.equal((await Call('GET', '/undaunted/api/DashboardAccounts?offset=-1', {key: Players[ADMIN].Key})).status, 400);
-    const empty = await Call('GET', '/undaunted/api/DashboardAccounts?offset=99999', {key: Players[ADMIN].Key});
+    const raw=GetDb().$client;
+    for(let i=0;i<105;i++)raw.prepare('INSERT INTO users(userId,name,notes) VALUES (?,?,0)').run('UID-zz-search-'+String(i).padStart(3,'0'),'DirectorySearch'+i);
+    try {
+        const beyond=await Call('GET','/undaunted/api/DashboardAccounts?offset=0&q=DirectorySearch104',{key:Players[ADMIN].Key});
+        assert.deepEqual(beyond.json.accounts.map((a:any)=>a.name),['DirectorySearch104']);
+    } finally { raw.prepare("DELETE FROM users WHERE userId LIKE 'UID-zz-search-%'").run(); }
+    const search=await Call('GET','/undaunted/api/DashboardAccounts?offset=0&q='+encodeURIComponent(A),{key:Players[ADMIN].Key});
+    assert.deepEqual(search.json.accounts.map((a:any)=>a.id),[A]);
+    assert.equal((await Call('GET','/undaunted/api/DashboardAccounts?offset=0&q=%25',{key:Players[ADMIN].Key})).json.accounts.length,0);
+    const empty = await Call('GET', '/undaunted/api/DashboardAccounts?offset=99999' , {key: Players[ADMIN].Key});
     assert.deepEqual(empty.json, {accounts: [], nextOffset: null});
 });
 
@@ -121,6 +156,8 @@ before(async () => {
     Listening = await new Promise<Server>((Resolve, Reject) => {
         const Started = app.listen(PERMISSIONS_API_PORT, "127.0.0.1", (Error?: Error) => Error ? Reject(Error) : Resolve(Started));
     });
+    // Match appclient: synchronous fixture writes can outlast an idle pooled socket on slow CI.
+    Listening.keepAliveTimeout = 0;
 
     // Real data for A, written the way the game server writes it
     assert.equal((await Call("POST", `/progression/${A}`, { gs: true, as: A, body: { progress_tracks: [{ progression_id: "season09b", progress: 150 }], objectives: [{ objective_id: "OBJ_X", value: 3, completed_count: 0 }] } })).status, 200);
@@ -148,6 +185,9 @@ const EXPECTED_ROUTES = [
     "GET /tags [HasUndauntedMetagameAuth]",
     "PUT /gamesession/epic [HasUndauntedMetagameAuth]",
     "POST /accountinfo/public [HasUndauntedMetagameAuth]",
+    // Optional Windows backup root; direct local game-server key only, no proxy callers.
+    "POST /internal/key-recovery/:action [KeyRecoveryAuth]",
+    "POST /internal/backup [LocalBackupAuth]",
     "POST /account/api/oauth/token []",
     "GET /account/api/oauth/verify [SoftMetagameAuth]",
     "GET /account/api/public/account/:AccId [SoftMetagameAuth]",
@@ -203,14 +243,17 @@ const EXPECTED_ROUTES = [
     "POST /inventory [HasUndauntedMetagameAuth]",
     "POST /inventory/instanceditem [HasUndauntedMetagameAuth]",
     "POST /reconcile [HasUndauntedMetagameAuth]",
-    "GET /creator [HasUndauntedMetagameAuth]",
+    "GET /creator [CreatorAuth, PlayerTokenOnly]",
+    "POST /creator [CreatorAuth, PlayerTokenOnly]",
     "GET /balance [HasUndauntedMetagameAuth]",
+    // The store offers' icons: public 1.4.4 item art, fetched by the client's image download without a token
+    "GET /store-images/:file []",
     // The free store (roadmap 3.7): only with STORE=free, the token's own account; with STORE=off the storefront
     // falls through to the old 400 below and the other three to the 404
-    "GET /product/skus/public [StoreOn, HasUndauntedMetagameAuth, PlayerTokenOnly]",
-    "GET /product/sku/:skuId [StoreOn, HasUndauntedMetagameAuth, PlayerTokenOnly]",
-    "GET /token/:currency/:skuId [StoreOn, HasUndauntedMetagameAuth, PlayerTokenOnly]",
-    "POST /notification/:currency [StoreOn, HasUndauntedMetagameAuth, PlayerTokenOnly]",
+    "GET /product/skus/public [StoreListOn, HasUndauntedMetagameAuth, PlayerTokenOnly]",
+    "GET /product/sku/:skuId [StoreSkuOn, HasUndauntedMetagameAuth, PlayerTokenOnly]",
+    "GET /token/:currency/:skuId [StoreSkuOn, HasUndauntedMetagameAuth, PlayerTokenOnly]",
+    "POST /notification/:currency [StoreAnyOn, HasUndauntedMetagameAuth, PlayerTokenOnly]",
     "GET /product/skus/public [HasUndauntedMetagameAuth]",
     "GET /guild/invite/player [HasUndauntedMetagameAuth]",
     "GET /guild [HasUndauntedMetagameAuth]",
@@ -227,6 +270,12 @@ const EXPECTED_ROUTES = [
     "DELETE /guild/:guildId [GuildsOn, HasUndauntedMetagameAuth, PlayerTokenOnly]",
     "GET /game_tuning/seasonal_event_schedule []",
     "GET /game_tuning/huntpass_xp_config []",
+    "POST /trials/leaderboards [TrialsOn, HasUndauntedMetagameAuth, AggregateLeaderboard]",
+    "POST /trials/leaderboards/all [TrialsOn, HasUndauntedMetagameAuth, AggregateLeaderboard]",
+    "POST /trials/leaderboards/solo [TrialsOn, HasUndauntedMetagameAuth]",
+    "POST /trials/leaderboards/solo/individual [TrialsOn, HasUndauntedMetagameAuth]",
+    "POST /trials/leaderboards/group [TrialsOn, HasUndauntedMetagameAuth]",
+    "POST /trials/leaderboards/group/individual [TrialsOn, HasUndauntedMetagameAuth]",
     "DELETE /candidate [CancelOn, HasUndauntedMetagameAuth]",
     "DELETE /candidate/leave [CancelOn, HasUndauntedMetagameAuth]",
     "POST /candidate/player/alive [MiscRoutesOn, HasUndauntedMetagameAuth]",
@@ -274,6 +323,9 @@ const EXPECTED_ROUTES = [
     "POST /loadout/:userId/:characterId/active/:index [RealProgressionOnly, HasUndauntedMetagameAuth]",
     "GET /loadout/:userId/:characterId/all [HasUndauntedMetagameAuth]",
     "POST /loadout/:userId/:characterId/:index [HasUndauntedMetagameAuth]",
+    "POST /undaunted/api/DeviceSignals [HasUndauntedUserApiKey]",
+    "GET /undaunted/api/HuntRegion [HasUndauntedUserApiKey]",
+    "POST /undaunted/api/HuntRegion [HasUndauntedUserApiKey]",
     "GET /undaunted/api/DiscordKeyStats [HasUndauntedAdminApiKey]",
 
     "POST /undaunted/api/DiscordLink [HasUndauntedAdminApiKey]",
@@ -281,6 +333,10 @@ const EXPECTED_ROUTES = [
 
     "GET /undaunted/api/BackendHealth [HasUndauntedAdminApiKey]",
     "GET /undaunted/api/DashboardAccounts [HasUndauntedAdminApiKey]",
+    "POST /undaunted/api/PlayingEnded [HasUndauntedUserApiKey]",
+    "GET /undaunted/api/Moderation/:accountId [HasUndauntedAdminApiKey]",
+    "GET /undaunted/api/ModerationLog [HasUndauntedAdminApiKey]",
+    "POST /undaunted/api/Moderation [HasUndauntedAdminApiKey]",
     "GET /undaunted/api/RegistrationStatus []",
     "POST /undaunted/api/RegistrationStatus [HasUndauntedAdminApiKey]",
     "GET /undaunted/api/InviteCodes [HasUndauntedAdminApiKey]",
@@ -308,7 +364,8 @@ const EXPECTED_ROUTES = [
     // Guild fallbacks on the host (the gateway does not pass /undaunted/api/* except the four public ones)
     "POST /undaunted/api/GuildInvite [HasUndauntedUserApiKey]",
     "POST /undaunted/api/DisbandGuild [HasUndauntedAdminApiKey]",
-    "GET /undaunted/api/Guilds [HasUndauntedAdminApiKey]"
+    "GET /undaunted/api/Guilds [HasUndauntedAdminApiKey]",
+    "GET /undaunted/api/AccountRecovery/:userId [HasUndauntedAdminApiKey]"
 ];
 
 function RegisteredRoutes(){
@@ -464,6 +521,10 @@ const ADMIN_ROUTES = (): [string, string, unknown][] => [
 
     ["GET", "/undaunted/api/BackendHealth", undefined],
     ["GET", "/undaunted/api/DashboardAccounts", undefined],
+    ["GET", "/undaunted/api/AccountRecovery/UID-example", undefined],
+    ["GET", `/undaunted/api/Moderation/${C}`, undefined],
+    ["GET", "/undaunted/api/ModerationLog?kind=events", undefined],
+    ["POST", "/undaunted/api/Moderation", {accountId:C,reason:'test',active:false}],
     ["POST", "/undaunted/api/RegisterInviteCode", { NewInviteCode: "PERM-TEST-CODE", Uses: 1 }],
     ["DELETE", "/undaunted/api/InviteCode/PERM-TEST-CODE", undefined],
     ["POST", "/undaunted/api/CreateInvite", {}],
@@ -622,6 +683,15 @@ describe("the game server's guild create (POST /guild)", () => {
 });
 
 describe("RequestOrigin", () => {
+    it("keeps IPv4 and IPv6 addresses out of persisted request traces", () => {
+        for(const address of ["203.0.113.7", "2001:db8::7"]){
+            assert.equal(DescribeOrigin(FakeRequest("127.0.0.1", "127.0.0.1", {
+                "x-dauntless-gateway": GATEWAY_TEST_SECRET, "x-forwarded-for": address
+            })), " via=gateway");
+            assert.equal(DescribeOrigin(FakeRequest(address, "127.0.0.1", { via: "proxy" })), " via=proxy");
+            assert.equal(DescribeOrigin(FakeRequest(address, "127.0.0.1")), "");
+        }
+    });
     it("takes X-Forwarded-For only from loopback with the right gateway secret", () => {
         const Right = { "x-dauntless-gateway": GATEWAY_TEST_SECRET };
 
@@ -748,7 +818,7 @@ describe("matchmaking input", () => {
 
         const City = await Call("POST", "/candidate/join", { as: A, body: { gameMode: "CITY", gameArgs: "", playerHuntId: "ShatteredIsles_ReturnToRamsgate" } });
         assert.equal(City.status, 200);
-        assert.deepEqual(DeployCalls[DeployCalls.length - 1], { GameMode: "CITY", GameArgs: "", HuntId: "ShatteredIsles_ReturnToRamsgate" });
+        assert.deepEqual(DeployCalls[DeployCalls.length - 1], { GameMode: "CITY", GameArgs: "", HuntId: "ShatteredIsles_ReturnToRamsgate", ExpectedPlayers: [A] });
 
         const Hunt = await Call("POST", "/candidate/join", { as: B, body: { gameMode: "ISLAND", gameArgs: "", playerHuntId: "CR19_PlayerHunt_Patrol_Heroic+_Gem" } });
         assert.deepEqual([Hunt.status, Hunt.json?.status], [200, "MATCHING"], "queued");

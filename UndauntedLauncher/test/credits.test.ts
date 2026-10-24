@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { PATRONS, PROJECT_PEOPLE, SOFTWARE, UPSTREAM_PEOPLE, localized, type CreditPerson } from "../src/shared/credits";
 import { STRINGS, type StringKey } from "../src/shared/i18n";
-import type { ExternalTarget } from "../src/shared/types";
+import { LANGUAGES, type ExternalTarget } from "../src/shared/types";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 // Line endings depend on the checkout (Windows runners and core.autocrlf give CRLF), so compare with LF.
@@ -23,6 +23,9 @@ test("the credits name every contributor, in order, with their role", () => {
   assert.equal(PROJECT_PEOPLE[0].github, "mixutin", "the maintainer comes first");
   assert.equal(person(PROJECT_PEOPLE, "mixutin").role, "maintainer");
   assert.equal(person(PROJECT_PEOPLE, "mixutin").name, "mixutin");
+  assert.match(person(PROJECT_PEOPLE, "LupesHk").note.en, /Brazilian Portuguese/);
+  assert.match(person(PROJECT_PEOPLE, "JusMH").note.en, /Offline play runtime/);
+  assert.match(person(PROJECT_PEOPLE, "anxo0").note.en, /DualSense/);
   assert.equal(person(PROJECT_PEOPLE, "Vvoidddd").role, "contributor");
   assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.en, /airship/);
   assert.match(person(PROJECT_PEOPLE, "Vvoidddd").note.en, /console windows/);
@@ -83,20 +86,22 @@ test("patrons are listed separately with localized thanks", () => {
   }
 });
 
-test("every credit has English and Finnish text", () => {
+test("every credit has text in every language", () => {
   for (const p of [...PROJECT_PEOPLE, ...UPSTREAM_PEOPLE]) {
     assert.ok(p.name.trim() && p.github.trim(), JSON.stringify(p));
     assert.match(p.github, /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/, `not a GitHub handle: ${p.github}`);
-    for (const lang of ["en", "fi"] as const) assert.ok(p.note[lang].trim().length > 10, `${p.github} ${lang}`);
+    for (const lang of LANGUAGES) assert.ok(p.note[lang].trim().length > 10, `${p.github} ${lang}`);
     assert.notEqual(p.note.fi, p.note.en, `${p.github}: the Finnish note is not translated`);
+    assert.notEqual(p.note.es, p.note.en, `${p.github}: the Spanish note is not translated`);
   }
   for (const sw of SOFTWARE) {
     assert.ok(sw.name.trim(), JSON.stringify(sw));
-    for (const lang of ["en", "fi"] as const) {
+    for (const lang of LANGUAGES) {
       assert.ok(localized(sw.author, lang).trim(), `${sw.name} author ${lang}`);
       assert.ok(sw.note[lang].trim(), `${sw.name} note ${lang}`);
     }
     assert.notEqual(sw.note.fi, sw.note.en, `${sw.name}: the Finnish note is not translated`);
+    assert.notEqual(sw.note.es, sw.note.en, `${sw.name}: the Spanish note is not translated`);
     if (sw.license !== null) assert.match(sw.license, /^[A-Za-z0-9.-]+$/, `${sw.name}: not an SPDX identifier`);
   }
 });
@@ -134,7 +139,8 @@ test("every package the launcher bundles is credited and its license text ships"
 
 test("THIRD-PARTY-NOTICES.txt ships with the launcher and has the Octicons, MinHook and Electron notices", () => {
   const forge = readFileSync(path.join(ROOT, "forge.config.ts"), "utf8");
-  assert.match(forge, /extraResource:\s*\[[^\]]*"THIRD-PARTY-NOTICES\.txt"/);
+  assert.match(forge, /const launcherResources\s*=\s*\[[^\]]*"THIRD-PARTY-NOTICES\.txt"/);
+  assert.match(forge, /extraResource:\s*launcherResources/);
   assert.match(NOTICES, /^\d+\. GitHub Octicons$/m);
   assert.match(NOTICES, /https:\/\/github\.com\/primer\/octicons/);
   assert.match(NOTICES, /Copyright \(c\) \d{4} GitHub Inc\.\n\nPermission is hereby granted, free of charge/);
@@ -246,13 +252,13 @@ test("the new text exists in English and Finnish", () => {
     "credits_phoenix",
   ];
   for (const k of keys) {
-    for (const lang of ["en", "fi"] as const) assert.ok(STRINGS[lang][k]?.trim(), `${lang} ${k}`);
+    for (const lang of LANGUAGES) assert.ok(STRINGS[lang][k]?.trim(), `${lang} ${k}`);
   }
   assert.equal(STRINGS.en.github_link, "Source code on GitHub");
   assert.equal(STRINGS.fi.github_link, "Lähdekoodi GitHubissa");
   assert.equal(STRINGS.en.nav_credits, "Credits");
   assert.equal(STRINGS.fi.nav_credits, "Tekijät");
-  for (const lang of ["en", "fi"] as const) {
+  for (const lang of LANGUAGES) {
     assert.match(STRINGS[lang].credits_license_text, /AGPL-3\.0/);
     assert.match(STRINGS[lang].credits_phoenix, /Phoenix Labs/);
     assert.match(STRINGS[lang].credits_phoenix, /Epic Games/);

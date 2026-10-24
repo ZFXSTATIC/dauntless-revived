@@ -124,7 +124,7 @@ development are off.
 | `SLAYER_LINKS` | metagame | on | `0` | Slayer Links. `0` puts back the 404 every `/slayerlink` route got before; the stored invites and links stay. |
 | `BALANCE_FROM_INVENTORY` | metagame | on | `0` | `/balance` and `/reconcile` report the currencies the character holds. `0` puts back the fixed sheet (Notes from the database, the rest 0). |
 | `PROGRESSION_REPLAY_WINDOW_S` | metagame | `5` (seconds) | `0` | A game server's grant repeated byte for byte less than 5 seconds later is answered, not added again. |
-| `PERSISTENT_WORLD_LIVENESS` | deploy server | on | `0` (only the watchdog restarts Ramsgate and the Dojo, as before) | A dead Ramsgate or Dojo is started again when a player travels there. |
+| `PERSISTENT_WORLD_LIVENESS` | deploy server | on | `0` (only the watchdog restarts Ramsgate; the Dojo starts on demand) | A dead Ramsgate or Dojo is started again when a player travels there. |
 | `GATEWAY_ALLOWLIST` | gateway | on | `0` | Kill switch: with it off, nobody's game ports open. |
 | `ENABLE_DOJO` | deploy server | Dojo starts on first use | `1` starts it at boot, as upstream did | Saves one game process while nobody trains. |
 
@@ -213,6 +213,7 @@ could not be loaded: <reason>`, exit code 1), before the database is opened.
 |:-----|:--------|:-------|:-------------|:-------|
 | `MATCHMAKING_MODE` | none. Unset or unknown: every matchmaking request is refused (400). | `DEPLOYSERVER` or `DISABLED` (exact) | `DEPLOYSERVER`: game servers come from the deploy server. `DISABLED`: refuse all matchmaking. | You; kit: always `DEPLOYSERVER` |
 | `DEPLOYSERVER_URL` | none. Unset: every launch fails, and the server status lists no worlds. | `host:port` without `http://` | Where the deploy server listens; the metagame adds `http://` and the path. Keep it on `127.0.0.1`: the deploy server has no authentication and refuses every other caller. | You (`127.0.0.1:61001`); kit: always `127.0.0.1:<deploy port>` |
+| `MATCHMAKING_DEPLOY_TIMEOUT_MS` | `240000` (4 minutes) | integer milliseconds, 1000-900000; invalid settings warn and use the default | Bounds the whole allocation request, including an unfinished JSON body. A timeout ends the candidate with `FAILED`; it never silently starts another server. A new explicit join may retry. Keep the deadline above the worker startup grace and configured launch spacing. | Optional; kit: kept |
 | `QOS_TARGET_URL` | none. Unset: the region list the client pings holds only `null` (what the client does then is untested). | full URL ending in `/QoS` | The one "region" the client pings before matchmaking; the metagame answers `GET /QoS` itself. One PC: `http://127.0.0.1:61000/QoS`. Private mode: the same with the Tailscale address. Public mode: `http://127.0.0.1:61000/QoS`, which is each friend's own launcher relay. | You; kit: always (public: `http://127.0.0.1:61000/QoS`; private: `http://<Tailscale address>:<metagame port>/QoS`) |
 | `TARGET_CHANGELIST` | none. Unset: the build id becomes `undefined_1.4.4_shipping`. | `239827` | Sent to the client as the build id `<changelist>_1.4.4_shipping` in the reply that sends it to a game server. Whether the 1.4.4 client checks it is not known; keep `239827`, the changelist in `Version.txt`. | You; kit: always `239827` |
 
@@ -297,6 +298,8 @@ All **fork only**, and read on every request. How the store works is on
 | `SAVE_HISTORY_DAILY` | `30` (also when empty, negative or not a whole number) | whole number of days, 0 or more (0 turns this tier off) | And the last version of each day for this many days. At the defaults that is at most about 3.5 MB per character. | Nobody by default |
 | `INVENTORY_REFUSE_OVERSPEND` | off | `1` or anything else | `1` refuses (409) an inventory transaction that removes more than the player has. Off because a refusal drops the whole transaction, rewards included; meanwhile an overspend is clamped at 0 and logged. | Nobody by default; kit: kept |
 | `INVENTORY_REPORT_REMOVALS` | on | `0` or anything else | **Fork only.** Inventory replies list every stack the transaction touched with its final count (0 for a used-up stack), so the game server sees what was spent. `0` puts back upstream's additions-only reply, which made upgrades free. | Nobody by default |
+| `PATROL_BONUS_DAILY` | `10` (also when empty or not a whole number of at least 1) | whole number, 1 or more | **Fork only.** The daily patrol bonus refill (the game's own is 6) lands the `TOKEN_DAILY_PATROL_BONUS` stack on this many. | Nobody by default |
+| `BOUNTY_TOKENS_DAILY` | `6` (also when empty or not a whole number of at least 1) | whole number, 1 or more | **Fork only.** Bounty tokens a player starts with and gets each day; the grant lands the `TOKEN_BOUNTY_DRAFT` stack on this many. Existing characters are set to both amounts once, on the first start of this version. | Nobody by default |
 
 ### Friends, parties and guilds {#metagame-social}
 
@@ -405,7 +408,7 @@ hunt queue refuses further joins until resolved. Normal startup failures still f
 The existing `MATCHMAKING_CANCEL` switch still controls in-game cancellation; this change does not
 enable it because the client also emits automatic cancel requests during normal joins.
 Update both server packages together. No database migration is involved.
-The normal public grouping window (20 seconds after the last join) and client polling
+The normal public grouping window (5 seconds after the first join) and client polling
 are additional; the one-minute bound is specifically the capacity wait, not an
 end-to-end loading-time guarantee. Capacity replies now log their reason and hunt ID.
 
@@ -424,12 +427,12 @@ game-server key included.
 | `BIND_HOST` | `127.0.0.1` (also when empty) | one IP address | **Fork only.** Listen address. Keep `127.0.0.1`: there is no authentication, and anyone who reaches the port can start game processes. Both of its routes also refuse any caller that is not loopback or that came through a proxy. | You; kit: always `127.0.0.1` |
 | `MY_IP` | none. Unset: every launch fails. | IPv4 address as players reach it | The address handed to clients for every game server (Ramsgate, the Dojo, hunts). `127.0.0.1` for play on one PC, the Tailscale address in private mode, the server's public IPv4 in public mode (for example `203.0.113.10`). With `127.0.0.1` on a shared server, a friend's game connects to its own PC. | You; kit: always (public mode: the IPv4 of the public host, which is `-PublicHost`, else the one saved at the last install, else the network adapter's only public IPv4; the Tailscale address in private mode; `127.0.0.1` in sandbox) |
 | `PORT_RANGE_BEGIN` | none. Unset: no hunt ports, every hunt fails. | UDP port | Lowest game-server port. Hunts use `PORT_RANGE_BEGIN` up to `PORT_RANGE_END - 2`: six at a time with 8770-8777. To allow more at once on a hand-built host, lower it and open the extra ports too. | You (8770); kit: always 8770 |
-| `PORT_RANGE_END` | none. Unset: Ramsgate cannot start. | keep `8777` | Ramsgate always runs on this port and the Training Dojo on the one below. Keep 8777: the server DLL turns its 50-second idle shutdown off for ports 8776 and up, so another value leaves hunts that never exit or a Ramsgate that keeps exiting. | You (8777); kit: always 8777 |
+| `PORT_RANGE_END` | none. Unset: Ramsgate cannot start. | keep `8777` | Ramsgate always runs on this port and the Training Dojo on the one below. The rebuilt DLL identifies the permanent Ramsgate by its map rather than its port. Older pinned DLLs disable the idle watchdog by port, so keep this layout when using them. | You (8777); kit: always 8777 |
 | `GAMESERVER_BINARY_PATH` | none. Unset or wrong: the deploy server stops soon after start (from reading the code). | full path of `Dauntless-Win64-Shipping.exe`, forward slashes | The 1.4.4 game exe started as each game server; `dxgi.dll` and `UndauntedInternalServer.dll` must sit next to it. Whatever file this names is run with the game-server key on its command line, so only administrators may edit the file. | You; kit: always (`<root>/game/Dauntless/Archon/Binaries/Win64/Dauntless-Win64-Shipping.exe`) |
 | `METAGAME_API_KEY` | none. Unset: game servers cannot talk to the metagame. | the game-server key (48 hex characters as generated) | **Secret: never share, never commit.** Passed to every game server as its first command-line argument; the server DLL sends it with every request to the metagame, which stores only its SHA-256. It must match `gameserver.key` and be registered in the metagame's database. Local users can see it in the game servers' command lines. | You ([Host a server]({{ host_page.url | relative_url }}#metagame)); kit: always (kept from the backup, the key file or the old file, otherwise new) |
 | `SECONDS_TO_WAIT_BETWEEN_GAMESERVER_STARTUP` | none. Unset: effectively no gap. | seconds; decimals work | Minimum gap between two game-server launches. All launches wait in one queue, so the third hunt requested at the same moment starts about two gaps later. | You (10); kit: 10 when missing or empty, a hand-set value is kept |
-| `ENABLE_DOJO` | on demand | `1` or anything else | **Fork only.** `1` starts the Training Dojo at boot, as upstream did. Anything else: it starts the first time someone is matchmade into it, and the watchdog restarts it from then on. | You (0); kit: 0 when missing, kept otherwise |
-| `PERSISTENT_WORLD_LIVENESS` | on | `0`, or anything else for on | **Fork only.** On: before Ramsgate or the Dojo is handed to a player, the deploy server checks that its process is alive and starts a dead one first, through the one launch the boot and the watchdog also use (never two processes on 8777). The startup line says `Ramsgate and Dojo liveness check before handing them out: on`. `0`: they are handed out unchecked and only the watchdog restarts them, within a minute, as before. | Nobody by default; kit: kept |
+| `ENABLE_DOJO` | on demand | `1` or anything else | **Fork only.** `1` starts the Training Dojo at boot, as upstream did. Anything else: it starts the first time someone is matchmade into it, and it starts again on demand after shutdown. | You (0); kit: 0 when missing, kept otherwise |
+| `PERSISTENT_WORLD_LIVENESS` | on | `0`, or anything else for on | **Fork only.** On: before Ramsgate or the Dojo is handed to a player, the deploy server checks that its process is alive and starts a dead one first, through the one launch the boot and the watchdog also use (never two processes on 8777). The startup line says `Ramsgate and Dojo liveness check before handing them out: on`. `0`: existing records are handed out unchecked; the watchdog restarts Ramsgate within a minute and clears a dead Dojo for the next request. | Nobody by default; kit: kept |
 | `LOG_LEVEL` | `info` (also when empty) | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` | Log threshold. At `info` the matchmaking line lists the expected players' account ids; the key is never logged. | Nobody by default; kit: kept |
 | `NODE_ENV` | unset: coloured readable logs | `production` or anything else | `production`: JSON log lines, and no stack traces in error pages. | You; kit: always `production` |
 
@@ -696,3 +699,49 @@ Only the automated tests read these. How to run the tests is in the
   `HUNT_PASS_PREMIUM_MODE`, `XMPP_PORT`, and in the deploy server `ENABLE_WATCHDOG`, `HOST`,
   `GAMESERVER_LOG_DIR`, `GAMESERVER_LOG_CMDS` and `METAGAME_ADDRESS`; in the fork's DLL, `UNDAUNTED_DIAG_LOG`.
   Nothing here reads them.
+
+
+The rebuilt server DLL reclaims hunts, tutorials and the Training Dojo after 30 seconds
+without a pending or open native connection, measured with a monotonic clock. Before
+the first connection it allows 180 seconds for cold client loading. Ramsgate remains
+permanent. The Dojo is restarted on the next request rather than immediately by the
+watchdog. These native changes require rebuilding and installing the DLL; the pinned
+launcher binary does not change when its source is edited.
+
+### Ramsgate instances and automatic region selection
+
+`RAMSGATE_POOL=1` is the deploy server default. A new installation starts no empty
+Ramsgate at boot. A CITY request reserves seats in a local instance with fewer than
+20 players; when none fits the whole travelling party, another city starts. The
+first instance uses `PORT_RANGE_END`; extra cities share the hunt port pool, excluding
+the Dojo port. Memory and port capacity can still reject a start. Each instance
+advertises and sets a native GameSession limit of 20. Reservations protect concurrent
+travellers while they load. Fresh native occupancy snapshots consume arriving
+reservations; missing or stale snapshots never prove free seats.
+
+An occupied city exits on its first tick without pending or open connections. A newly
+requested city has 180 seconds to receive its first connection, so it cannot exit
+before its requesting client loads. Exited cities release their ports and stay stopped
+until requested again. `RAMSGATE_POOL=0` restores the old permanent-city behavior for
+rollback/older DLLs. In pool mode the old two-city `CITY_OVERFLOW` balancer is bypassed;
+regional routing still chooses the worker, which owns its own pool.
+
+The launcher now defaults to **Automatic (closest region)** when no explicit region
+is saved. On Play it measures two TCP handshakes per available region and compares the
+second handshake latency (avoiding the initial DNS/cold-connection cost). This is a
+network-latency estimate, not geographic distance or an in-game UDP RTT measurement.
+Players can still choose EU, Australia, or Germany, and existing manual choices stay
+manual. Parties still follow their leader. Automatic is reevaluated on each Play.
+
+On the metagame, `REGION_MAIN_PROBE_HOST`, `REGION_AUS_PROBE_HOST`, and
+`REGION_GER_PROBE_HOST` identify reachable TCP listeners on the actual regional hosts;
+corresponding `REGION_*_PROBE_PORT` values default to 443. Main falls back to the invite
+host and port. Australia and Germany are advertised only with `AUS_REGION=1` and
+`GERMANY_REGION=1`. Probe sockets transmit no credentials or application data.
+Failed probes are ignored; if none works, the current backend region is retained.
+Configure a reachable listener before enabling automatic selection of another region.
+GET `/undaunted/api/HuntRegion` now includes `probes: [{region, host, port}]` alongside
+its existing fields. Region saving and the manually selected region API are unchanged.
+
+Install the rebuilt server DLL and updated launcher to activate native shutdown and
+automatic selection. Editing source does not replace the pinned installer binaries.

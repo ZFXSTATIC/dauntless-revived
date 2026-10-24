@@ -50,6 +50,7 @@ export interface RelayOptions {
   maxSockets?: number;
   onPinError?: (actual: string | null) => void;
   onLog?: (level: RelayLogLevel, message: string) => void;
+  authorizeConnection?: (socket: net.Socket) => Promise<boolean>;
 }
 
 // Filters a rawHeaders list ([name, value, name, value, ...]): drops hop-by-hop headers and Host.
@@ -130,6 +131,7 @@ export class Relay {
   private server: http.Server | null = null;
   private readonly agent: PinnedAgent;
   private readonly tunnels = new Set<Duplex>();
+  private readonly authorized = new WeakMap<net.Socket, Promise<boolean>>();
   private readonly hostHeader: string;
   private listeningPort: number | null = null;
   requests = 0;
@@ -162,8 +164,24 @@ export class Relay {
     if (this.server) return Promise.resolve();
     const port = this.opts.port ?? DEFAULT_RELAY_PORT;
     const server = http.createServer({ keepAliveTimeout: 60000, maxHeaderSize: 64 * 1024 });
-    server.on("request", (req, res) => this.handleRequest(req, res));
-    server.on("upgrade", (req, socket, head) => this.handleUpgrade(req, socket, head));
+    server.on("request", (req, res) => {
+      void this.authorize(req.socket).then((allowed) => {
+        if (req.socket.destroyed) return;
+        if (allowed) this.handleRequest(req, res);
+        else {
+          req.resume();
+          res.setHeader("Connection", "close");
+          sendError(res, 403, "local_process_denied");
+        }
+      });
+    });
+    server.on("upgrade", (req, socket, head) => {
+      void this.authorize(req.socket).then((allowed) => {
+        if (socket.destroyed) return;
+        if (allowed) this.handleUpgrade(req, socket, head);
+        else socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+      });
+    });
     return new Promise((resolve, reject) => {
       const onError = (e: NodeJS.ErrnoException) => {
         server.removeAllListeners();
@@ -180,6 +198,20 @@ export class Relay {
         resolve();
       });
     });
+  }
+
+  private authorize(socket: net.Socket): Promise<boolean> {
+    if (!this.opts.authorizeConnection) return Promise.resolve(true);
+    let verdict = this.authorized.get(socket);
+    if (!verdict) {
+      verdict = Promise.resolve().then(() => this.opts.authorizeConnection!(socket)).catch(() => false)
+        .then((allowed) => {
+          if (!allowed) this.log("warn", "local connection rejected: game process ownership could not be verified");
+          return allowed;
+        });
+      this.authorized.set(socket, verdict);
+    }
+    return verdict;
   }
 
   stop(): Promise<void> {

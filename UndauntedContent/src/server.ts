@@ -71,6 +71,7 @@ async function Main(){
     }
 
     const Handler = CreateContentHandler({
+        downloadBaseUrl: TheConfig.downloadBaseUrl,
         manifest: Manifest,
         index: IndexManifest(Manifest),
         gameDir: TheConfig.gameDir,

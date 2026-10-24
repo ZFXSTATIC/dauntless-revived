@@ -7,10 +7,13 @@ import { MakerAppImage } from "@reforged/maker-appimage";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 
 // Windows uses Squirrel plus a portable ZIP. Linux builds AppImage, deb, rpm and a portable ZIP.
 // CI builds both platforms on every push and launcher-release.yml publishes them together.
 const skipRpm = process.env.DAUNTLESS_REVIVED_SKIP_RPM === "1";
+const launcherResources = ["assets/dxgi.dll", "assets/UndauntedInternalServer.dll", "assets/icon.png", "THIRD-PARTY-NOTICES.txt", "../client-mods"];
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -23,8 +26,9 @@ const config: ForgeConfig = {
     // the brand icons in ../brand/launcher/, made by npm run icon.
     icon: "assets/icon",
     // The two pinned DLLs the game needs, the window icon, and the license texts of the third-party
-    // software the launcher and the DLLs include. Nothing else ships outside the asar.
-    extraResource: ["assets/dxgi.dll", "assets/UndauntedInternalServer.dll", "assets/icon.png", "THIRD-PARTY-NOTICES.txt"],
+    // software the launcher and the DLLs include, plus ../client-mods (UE4SS and the client mods, installed
+    // by src/main/client-mods.ts). Windows also ships the offline runtime outside the asar.
+    extraResource: launcherResources,
     win32metadata: {
       CompanyName: "Dauntless Revived",
       FileDescription: "Dauntless Revived Launcher",
@@ -35,6 +39,23 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {
     onlyModules: [],
+  },
+  hooks: {
+    generateAssets: async (forgeConfig, platform, arch) => {
+      const resources = [...launcherResources];
+      if (platform === "win32") {
+        if (process.platform !== "win32" || arch !== process.arch) {
+          throw new Error("Windows offline runtime must be staged on Windows for the packaging architecture");
+        }
+        // Both package and make (including direct Forge/CI invocation) rebuild from
+        // locked source dependencies. A missing or stale generated runtime cannot ship.
+        execFileSync(process.execPath, [path.resolve("scripts/stage-offline-runtime.mjs"), "--install-build-dependencies"], {
+          cwd: process.cwd(), stdio: "inherit",
+        });
+        resources.push("offline-runtime");
+      }
+      forgeConfig.packagerConfig.extraResource = resources;
+    },
   },
   makers: [
     new MakerSquirrel({

@@ -21,6 +21,7 @@ import { IfNoneMatchHits, IfRangeAllowsPartial, ParseRange } from "./range";
 // Anything else is 404; there is no directory listing anywhere.
 
 export type ContentDeps = {
+    downloadBaseUrl?: string;
     manifest: Manifest;
     index: Map<string, ManifestFile>;
     gameDir: string;
@@ -77,7 +78,7 @@ function StripQuery(Target: string): string {
 }
 
 export function CreateContentHandler(Deps: ContentDeps): http.RequestListener {
-    const ManifestText = JSON.stringify(Deps.manifest);
+    const ManifestText = JSON.stringify({ ...Deps.manifest, downloadBaseUrl: Deps.downloadBaseUrl });
     const ManifestETag = `"${createHash("sha256").update(ManifestText).digest("hex")}"`;
 
     return (req, res) => {

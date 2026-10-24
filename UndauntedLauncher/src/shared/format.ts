@@ -13,7 +13,7 @@ export function formatBytes(bytes: number, lang: Language = "en"): string {
   }
   const digits = unit === 0 ? 0 : value >= 100 ? 0 : value >= 10 ? 1 : 2;
   const text = value.toFixed(digits);
-  return `${lang === "fi" ? text.replace(".", ",") : text} ${UNITS[unit]}`;
+  return `${lang === "en" || lang === "ja" ? text : text.replace(".", ",")} ${UNITS[unit]}`;
 }
 
 export function formatSpeed(bytesPerSecond: number, lang: Language = "en"): string {
@@ -39,13 +39,25 @@ export function formatPercent(done: number, total: number): number {
   return Math.max(0, Math.min(100, Math.floor((done / total) * 1000) / 10));
 }
 
+const JUST_STARTED: Record<Language, string> = {
+  en: "just started",
+  fi: "juuri alkanut",
+  de: "gerade gestartet",
+  es: "recién iniciado",
+  fr: "vient de démarrer",
+  it: "appena avviato",
+  ja: "開始直後",
+  pt: "recém-iniciado",
+  ru: "только что запущен",
+};
+
 // "running for" on instance cards: 42 min, 3 h 5 min, 2 d 4 h
 export function formatRunningTime(startedAt: string | null, now: number, lang: Language = "en"): string {
   if (startedAt === null) return "–";
   const t = Date.parse(startedAt);
   if (!Number.isFinite(t)) return "–";
   const minutes = Math.max(0, Math.floor((now - t) / 60000));
-  if (minutes < 1) return lang === "fi" ? "juuri alkanut" : "just started";
+  if (minutes < 1) return JUST_STARTED[lang];
   if (minutes < 60) return `${minutes} min`;
   return formatDuration(minutes * 60, lang);
 }
@@ -58,7 +70,10 @@ export function formatDate(iso: string | null, lang: Language = "en"): string {
   const day = d.getDate();
   const month = d.getMonth() + 1;
   const year = d.getFullYear();
-  if (lang === "fi") return `${day}.${month}.${year}`;
+  if (lang === "fi" || lang === "de" || lang === "ru") return `${day}.${month}.${year}`;
+  if (lang === "ja") return `${year}年${month}月${day}日`;
+  if (lang === "fr" || lang === "it" || lang === "pt") return `${day}/${month}/${year}`;
+  if (lang === "es") return `${day} ${["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"][month - 1]} ${year}`;
   const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${day} ${names[month - 1]} ${year}`;
 }

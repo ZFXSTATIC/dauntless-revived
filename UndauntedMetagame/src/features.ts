@@ -130,6 +130,28 @@ export const StoreRepeatableTokens = DefineSwitch({
     Show: ShowOnOff
 });
 
+// Lady Luck's Trials store. Independent of STORE: the normal real-money/free-cosmetic storefront can
+// remain off while Lady Luck uses the same recovered purchase-token service for Steel/Gilded Marks.
+// On by default: the catalogue has been through a real 1.4.4 client.
+export const TrialsStore = DefineSwitch({
+    Env: "TRIALS_STORE",
+    Label: "trialsStore",
+    Default: true,
+    Parse: ParseOnOff,
+    Show: ShowOnOff
+});
+
+// Middleman's store-backed offers: the two permanent fusion-slot offers and the weekly Aetherdust
+// cell rotation. Independent of STORE for the same reason as Lady Luck; on by default since an in-game
+// pass of the 1.4.4 vendor request flow.
+export const MiddlemanStore = DefineSwitch({
+    Env: "MIDDLEMAN_STORE",
+    Label: "middlemanStore",
+    Default: true,
+    Parse: ParseOnOff,
+    Show: ShowOnOff
+});
+
 // POST /progression/:uid (the game server's XP and objective grant): a body identical to the account's
 // last applied grant, less than this many seconds after it, is a retry of a request that failed (the game
 // server retries up to 5 times). It gets the stored answer and adds nothing. 0 turns the check off. Keep it
@@ -162,6 +184,40 @@ export const BalanceFromInventory = DefineSwitch({
     Env: "BALANCE_FROM_INVENTORY",
     Label: "balanceFromInventory",
     Default: true,
+    Parse: ParseOnOff,
+    Show: ShowOnOff
+});
+
+// Middleman fusion completion checks. Stable per-slot fusion-token persistence is always enabled because
+// it only disambiguates inventory items the client already sends. The stricter reveal-time/result validation
+// waits for a captured 1.4.4 completion transaction so a guessed request shape cannot block legitimate saves.
+export const MiddlemanFusionGuards = DefineSwitch({
+    Env: "MIDDLEMAN_FUSION_GUARDS",
+    Label: "middlemanFusionGuards",
+    Default: false,
+    Parse: ParseOnOff,
+    Show: ShowOnOff
+});
+
+// Trials leaderboards (roadmap 3.8; controllers/trials.ts). On by default; TRIALS_LEADERBOARDS=off
+// turns them off. When on, game servers may submit completed runs to the aggregate endpoint and
+// players may read the five leaderboard routes.
+export const TrialsLeaderboards = DefineSwitch({
+    Env: "TRIALS_LEADERBOARDS",
+    Label: "trialsLeaderboards",
+    Default: true,
+    Parse: ParseOnOff,
+    Show: ShowOnOff
+});
+
+// Experimental replacement for the expired client-side Trials schedule. When enabled the tuning
+// endpoint advertises the Normal/Dauntless player hunts and this week's exact cooked matchmaker rows
+// as active for the current Thursday-to-Thursday window. Off by default until a real 1.4.4 client
+// proves this is sufficient to remove the Arena branch of the DLL's IsHuntUnlocked bypass.
+export const TrialsSchedule = DefineSwitch({
+    Env: "TRIALS_SCHEDULE",
+    Label: "trialsSchedule",
+    Default: false,
     Parse: ParseOnOff,
     Show: ShowOnOff
 });

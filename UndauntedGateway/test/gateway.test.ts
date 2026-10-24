@@ -121,6 +121,12 @@ describe("gateway over TLS", () => {
                 Res.end(Ok ? "20000" : "");
                 return true;
             }
+            if(Path === "/undaunted/api/devicesignals"){
+                const blocked=Req.headers['x-test-device-result']==='blocked';
+                Res.writeHead(blocked?403:404,{'content-type':'application/json'});
+                Res.end(JSON.stringify({error:blocked?'device_banned':'not_found'}));
+                return true;
+            }
             if(Path === "/account/api/oauth/token"){
                 const Ok = Body.toString("utf8").includes("exchange_code=good");
                 Res.writeHead(Ok ? 200 : 400, { "content-type": "application/json" });
@@ -145,6 +151,14 @@ describe("gateway over TLS", () => {
         await TheGateway.Close(500);
         await Promise.all([Meta.close(), Content.close(), Helper.close(), Ws.close()]);
         Log.stop();
+    });
+
+    it("preserves legacy missing-device-route and genuine device-ban responses",async()=>{
+        const legacy=await HttpsRequest(P.gateway,'/undaunted/api/DeviceSignals',{method:'POST',body:'{}'});
+        assert.equal(legacy.status,404);
+        const banned=await HttpsRequest(P.gateway,'/undaunted/api/DeviceSignals',{method:'POST',body:'{}',headers:{'x-test-device-result':'blocked'}});
+        assert.equal(banned.status,403);
+        assert.equal(banned.json().error,'device_banned');
     });
 
     it("serves the certificate from make-cert.js, and a client pinning its fingerprint connects", async () => {

@@ -45,14 +45,20 @@ export const DECLINE_COOLDOWN_MS = 2 * 60 * 1000;
 export type CandidateState = "MATCHING" | "IN_PROGRESS";
 
 export type PartyCandidate = {
+    Region?: 'main' | 'aus' | 'ger' | 'us',
     CandidateId: string,
     State: CandidateState,
     GameMode: string,
     HuntId: string,
     MemberIds: string[],       // who was taken along, in party order
     Served: Set<string>,       // members already told to travel
+    ServedAt?: Map<string, number>, // immutable first travel time for restored entries
     Host?: string,
     Port?: number,
+    SessionId?: string,
+    AllocatedAt?: number,
+    LaunchDeadline?: number,
+    CapacityDeadline?: number, // renewed only by active matchmaking status polls
     CreatedAt: number,
     LastServedAt?: number
 };
@@ -243,7 +249,9 @@ function ExpireCandidate(TheParty: Party){
     else if(AllServed && Candidate.LastServedAt !== undefined && Now - Candidate.LastServedAt > CANDIDATE_LINGER_MS){
         Why = "every member was sent to the server";
     }
-    else if(Now - Candidate.CreatedAt > CANDIDATE_MAX_AGE_MS){
+    else if(Candidate.State === 'MATCHING' && (Candidate.LaunchDeadline ?? Candidate.CapacityDeadline) !== undefined
+        ? Now > (Candidate.LaunchDeadline ?? Candidate.CapacityDeadline)!
+        : Now - (Candidate.AllocatedAt ?? Candidate.CreatedAt) > CANDIDATE_MAX_AGE_MS){
         Why = "too old";
     }
 
@@ -256,6 +264,11 @@ function ExpireCandidate(TheParty: Party){
 // Drops members of a party of 2+ that nobody has heard from (never the caller, and never
 // the last one: a party of one is only forgotten after IDLE_PARTY_MS), then expires the
 // candidate
+function IsLoadingHunt(TheParty: Party, Member: string){
+    const Candidate = TheParty.Candidate ?? TheParty.LastCandidate;
+    return Candidate?.Served.has(Member) && Candidate.LastServedAt !== undefined && Clock() - Candidate.LastServedAt < 5 * 60 * 1000;
+}
+
 function Refresh(TheParty: Party, Caller?: string){
     if(TheParty.Members.length >= 2){
         for(const Member of [...TheParty.Members]){
@@ -269,7 +282,7 @@ function Refresh(TheParty: Party, Caller?: string){
 
             const Ago = SeenAgo(Member);
 
-            if(Ago > MEMBER_TIMEOUT_MS){
+            if(Ago > MEMBER_TIMEOUT_MS && !IsLoadingHunt(TheParty, Member)){
                 logger.info(`party: swept ${Member} from P=${TheParty.PartyId}: not seen for ${Seconds(Ago)} (by=${Caller ?? "sweep"})`);
                 RemoveMember(TheParty, Member, "the leader was not seen");
             }
@@ -782,7 +795,7 @@ export function EvictPartyLeader(CallerId: string, LeaderId: string): PartyActio
 
     const Ago = SeenAgo(LeaderId);
 
-    if(Ago > MEMBER_TIMEOUT_MS){
+    if(Ago > MEMBER_TIMEOUT_MS && !IsLoadingHunt(TheParty, LeaderId)){
         RemoveMember(TheParty, LeaderId, "the leader was not seen");
         logger.info(`party: leader ${LeaderId} removed by=${CallerId}: not seen for ${Seconds(Ago)}; ${Describe(TheParty)}`);
     }
@@ -847,6 +860,7 @@ export function MarkPartyCandidateReady(TheParty: Party, CandidateId: string, Ho
 
     if(Candidate != null && Candidate.CandidateId === CandidateId){
         Candidate.State = "IN_PROGRESS";
+        Candidate.CapacityDeadline = undefined;
         Candidate.Host = Host;
         Candidate.Port = Port;
         TheParty.LastCandidate = Candidate;
@@ -861,12 +875,16 @@ export function ClearPartyCandidate(TheParty: Party, CandidateId: string, Why: s
 }
 
 // A member was told to travel to the candidate's server
-export function MarkPartyCandidateServed(UserId: string, CandidateId: string){
+export function MarkPartyCandidateServed(UserId: string, CandidateId: string, FirstSentAt = Clock()){
     const Candidate = GetPartyOf(UserId)?.Candidate;
 
     if(Candidate != null && Candidate.CandidateId === CandidateId){
-        Candidate.Served.add(UserId);
-        Candidate.LastServedAt = Clock();
+        if(!Candidate.Served.has(UserId)){
+            Candidate.Served.add(UserId);
+            Candidate.ServedAt ??= new Map<string, number>();
+            Candidate.ServedAt.set(UserId, FirstSentAt);
+            Candidate.LastServedAt = Clock();
+        }
     }
 }
 

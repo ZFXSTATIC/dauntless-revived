@@ -214,5 +214,17 @@
   "WP_MS_HP07A_MONK_01": "instanced",
   "WP_MS_OSTIAN": "instanced",
   "WP_MS_SERRATED": "instanced",
-  "WP_MS_UNSEEN_00": "instanced"
+  "WP_MS_UNSEEN_00": "instanced",
+  "DYE_BLUE07_DURABLE": "stacked",
+  "DYE_BLUE08_DURABLE": "stacked",
+  "DYE_GREEN01_DURABLE": "stacked",
+  "DYE_GREEN02_DURABLE": "stacked",
+  "DYE_PURPLE01_DURABLE": "stacked",
+  "DYE_RED01_DURABLE": "stacked",
+  "DYE_RED02_DURABLE": "stacked",
+  "DYE_BROWN01_DURABLE": "stacked",
+  "DYE_BROWN02_DURABLE": "stacked",
+  "DYE_GRAY05_DURABLE": "stacked",
+  "DYE_GRAY07_DURABLE": "stacked",
+  "DYE_DARKTEAL_DURABLE": "stacked"
 }

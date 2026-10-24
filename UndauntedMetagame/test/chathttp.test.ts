@@ -121,3 +121,12 @@ describe("chat names through the real account routes", () => {
         assert.deepEqual(await Bravo.ShownLines(Unsigned), ["Alpha: hi"]);
     });
 });
+
+// Regression: the fleet outgrew the old realm-wide 64-socket ceiling.
+it('admits 100 authenticated players on the shared chat service', async () => {
+    for(let i=0;i<100;i++){
+        const userId=`UID-chat-capacity-${i}`;
+        GetDb().insert(users).values({userId,name:`Capacity${i}`,notes:0,isAdmin:false}).run();
+        Wires.push(await Login(Chat.port,userId));
+    }
+});

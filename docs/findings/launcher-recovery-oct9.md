@@ -1,0 +1,13 @@
+# October 9: launcher recovery, languages and metagame responsiveness
+
+Launcher 0.1.32 includes PR #44 (Spanish UI) and #45 (independent game-language selection). Game choices are Auto, English, German, Spanish, French, Italian, Japanese, Brazilian Portuguese and Russian. These select existing 1.4.4 translations; they do not translate unsupported game content. Launcher UI languages remain English, Finnish and Spanish.
+
+Validated account keys are copied to Documents/Dauntless Revived/Account Keys, separately per server. Recovery retains the public server certificate binding. Treat these readable recovery files as credentials, including when Documents is cloud-synced. Forgetting an account removes its recovery file. Existing encrypted keys are exported on next successful load.
+
+The owner dashboard can search account names and IDs, then explicitly reveal an available login key. ACCOUNT_KEY_RECOVERY=1 captures successful non-admin launcher authentication in an AES-256-GCM encrypted database record. Encryption derives from AUTH_SIGNING_PRIVKEY_B64: retain that configuration securely with backups; rotating it invalidates older recovery ciphertext. Administrator credentials are excluded. Previously hashed keys cannot be reconstructed: an account needs a successful authentication after enabling recovery before its original key is available. Public gateway requests cannot use the owner route. Keys must not appear in status embeds, ordinary account listings, or logs.
+
+For launchers that never appear, startup and renderer-load failures now produce a visible error, a hidden window is revealed after ten seconds, and a renderer crash retries once in software-rendering safe mode. The executable also accepts --safe-mode. This does not prove the cause on an affected Windows 10/11 PC: collect its launcher logs and Windows crash record if it still will not open. Security protections remain enabled.
+
+The production key bot was connected to Discord but its metagame requests were failing. CPU profiles identified the inventory receipt expiry DELETE as the dominant synchronous operation. Migration 0025 adds the missing createdDate index. Before: HTTP requests timed out/refused with hundreds of queued connections. After: inventory grants succeeded; bot InviteCodes/GetUserInfo read checks returned 200 in 46/7 ms, and a real private key reply was logged. No key was reissued for diagnosis.
+
+ZFXSTATIC is included in the client cosmetic developer-name styling. The ordinary halo asset is available; a black variant was not verified. Cosmetic developer styling grants no administrative privileges.

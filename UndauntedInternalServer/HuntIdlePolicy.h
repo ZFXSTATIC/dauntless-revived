@@ -1,13 +1,12 @@
 #pragma once
 #include <algorithm>
 
-// Allow cold clients to load before their first connection; reclaim empty completed hunts.
+// Reclaim hunts after two continuous minutes without a pending or open connection.
 struct HuntIdlePolicy {
     double EmptySeconds = 0;
-    bool HadPlayer = false;
     bool Advance(double Seconds, bool HasPlayer) {
-        if (HasPlayer) { HadPlayer = true; EmptySeconds = 0; return false; }
+        if (HasPlayer) { EmptySeconds = 0; return false; }
         EmptySeconds += std::max(0.0, Seconds);
-        return EmptySeconds >= (HadPlayer ? 180.0 : 180.0);
+        return EmptySeconds >= 120.0;
     }
 };

@@ -118,7 +118,7 @@ jobs:
     name: Build and test (Windows)
     needs: prepare
     if: needs.prepare.outputs.released != 'true' && needs.prepare.outputs.artifact == ''
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 30
     permissions:
       contents: read

@@ -17,6 +17,9 @@ the same software.
 7. ms
 8. electron-squirrel-startup
 9. debug
+10. Simple Icons
+11. Discord brand assets
+12. PS5 Button Icons and Controls
 
 ------------------------------------------------------------------------------
 1. UndauntedInternalServer.dll and dxgi.dll (Undaunted)
@@ -506,3 +509,17 @@ https://cdn.prod.website-files.com/6257adef93867e50d84d30e2/66e3d7f4ef6498ac018f
 
 The symbols are bundled locally and rendered as single-colour decorative masks.
 Patreon and Discord trademarks remain the property of their respective owners.
+
+------------------------------------------------------------------------------
+12. PS5 Button Icons and Controls
+------------------------------------------------------------------------------
+
+PS5 Button Icons and Controls - Zacksly
+Licensed under CC BY 3.0 - https://zacksly.itch.io
+https://creativecommons.org/licenses/by/3.0/
+
+Installed with the client mods (Archon/Binaries/Win64/PS5Icons) and shown in the game with a
+DualSense connected. Modified for Dauntless Revived: the button icons have the symbol filled dark,
+a thin dark rim and a new size; the DualSense picture is placed on the Controls screen's layout
+with its label boxes and group lines. PlayStation and DualSense are trademarks of Sony Interactive
+Entertainment; this project is not affiliated with or endorsed by Sony.

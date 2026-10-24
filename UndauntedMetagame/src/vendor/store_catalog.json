@@ -19,9 +19,10 @@
     "Tile art must be 2:1. Store tiles are a fixed 2:1 frame. Real store art (StoreImages) is 512x256; the Hunt Pass reward icons many PRESTIGE_ rows point at are 512x512 or 256x512 and render stretched. store_art_skus.json lists only the SKUs whose tile texture is 2:1 (1.9-2.25), and a test holds every storefront id to it.",
     "Grant kind (stacked or instanced) follows the live ArchonCatalog stackable flag, recorded per item in store_item_kinds.json. The real season09b config agrees with that flag for every item it grants. Armour is only sold where it is stackable, the case proven in game.",
     "Repeatable offers: TOKEN_BOUNTY_DRAFT_PREMIUM (bounty_token_id's premium twin in /bounty/game-data - the purchased kind that persists across seasons) may be bought any number of times, in any positive quantity. Everything else is a one-time cosmetic unlock.",
-    "Sheens and premium hair tints are entitlement unlocks, not items. Their SKU -> entitlement pairs come from the client's own tables: /Game/Gameplay/dye_sheen_table and /Game/UI/Appearance/appearance_hair_colour_premium_table (columns SkuId and Entitlements). Dye palette bundles (bundle_dyes_palette_NN) are not sold: the client defines their sets (dye_set_info_table) but assigns no dyes to them, so their contents were server-side only.",
+    "Sheens and premium hair tints are entitlement unlocks, not items. Their SKU -> entitlement pairs come from the client's own tables: /Game/Gameplay/dye_sheen_table and /Game/UI/Appearance/appearance_hair_colour_premium_table (columns SkuId and Entitlements). Native dye palette sets have no client-assigned contents; Revived defines the contents of its six palette offers below.",
     "From github.com/Harmonicrain/Undaunted (895f7c7) by Harmonic, AGPL-3.0-only. Identifiers and tuning values read from the 1.4.4 client for interoperability; no game assets.",
-    "Dauntless Revived changes: season09b_rank is served empty (the fork's season09b_10_ranks offer granted CURRENCY_PRESTIGE, which the store cannot sell; a rank skip would be a progression grant). The repeatable bounty-token bundle is listed only with STORE_REPEATABLE_TOKENS=1. store_art_skus.json lives in test/data/, since only a test reads it. The store answers only with STORE=free."
+    "Dauntless Revived changes: season09b_rank is served empty (the fork's season09b_10_ranks offer granted CURRENCY_PRESTIGE, which the store cannot sell; a rank skip would be a progression grant). The repeatable bounty-token bundle is listed only with STORE_REPEATABLE_TOKENS=1. store_art_skus.json lives in test/data/, since only a test reads it. The store answers only with STORE=free.",
+    "Six Revived colour-dye packs use native palette SKU art rows; contents are explicitly defined here, not inferred retail bundle contents. Sheen offers remain archival data but are permanently blocked by IsListed."
   ],
   "webstore": [
     {
@@ -2608,7 +2609,7 @@
     },
     {
       "id": "single_fabric_admiralsrepose",
-      "displayName": "Admiral\u2019s Repose",
+      "displayName": "Admiral’s Repose",
       "displayDescription": "Free on this private server.",
       "displayPriority": 1815,
       "tags": [
@@ -2641,7 +2642,7 @@
     },
     {
       "id": "single_fabric_admiralsshield",
-      "displayName": "Admiral\u2019s Shield",
+      "displayName": "Admiral’s Shield",
       "displayDescription": "Free on this private server.",
       "displayPriority": 1814,
       "tags": [
@@ -2674,7 +2675,7 @@
     },
     {
       "id": "single_fabric_admiralswill",
-      "displayName": "Admiral\u2019s Will",
+      "displayName": "Admiral’s Will",
       "displayDescription": "Free on this private server.",
       "displayPriority": 1813,
       "tags": [
@@ -4551,7 +4552,7 @@
     },
     {
       "id": "single_fabric_sanderebens",
-      "displayName": "Sandereben\u2019s Shield",
+      "displayName": "Sandereben’s Shield",
       "displayDescription": "Free on this private server.",
       "displayPriority": 1741,
       "tags": [
@@ -6601,6 +6602,222 @@
       "items": [
         {
           "catalogId": "WP_IH_HP10B_RAIDERS_01",
+          "quantity": 1
+        }
+      ],
+      "entitlements": [],
+      "maxAllowed": 1,
+      "remaining": 1,
+      "loadoutSlots": null,
+      "availableFrom": null,
+      "availableTo": null,
+      "timeAvailabilityReason": null,
+      "platformOfferId": null,
+      "missingEntitlementNames": null
+    },
+    {
+      "id": "bundle_dyes_palette_01",
+      "displayName": "Plunge & Glacier Dyes",
+      "displayDescription": "Unlocks the Plunge and Glacier armour dye colours.",
+      "displayPriority": 1490,
+      "tags": [
+        "webstore",
+        "dye_armour"
+      ],
+      "platinumPrice": 0,
+      "platinumSalePrice": null,
+      "cellDustPrice": null,
+      "prestigePrice": null,
+      "event01Price": null,
+      "steelMarksPrice": null,
+      "gildedMarksPrice": null,
+      "items": [
+        {
+          "catalogId": "DYE_BLUE07_DURABLE",
+          "quantity": 1
+        },
+        {
+          "catalogId": "DYE_BLUE08_DURABLE",
+          "quantity": 1
+        }
+      ],
+      "entitlements": [],
+      "maxAllowed": 1,
+      "remaining": 1,
+      "loadoutSlots": null,
+      "availableFrom": null,
+      "availableTo": null,
+      "timeAvailabilityReason": null,
+      "platformOfferId": null,
+      "missingEntitlementNames": null
+    },
+    {
+      "id": "bundle_dyes_palette_02",
+      "displayName": "Meadow & Guerilla Dyes",
+      "displayDescription": "Unlocks the Meadow and Guerilla armour dye colours.",
+      "displayPriority": 1489,
+      "tags": [
+        "webstore",
+        "dye_armour"
+      ],
+      "platinumPrice": 0,
+      "platinumSalePrice": null,
+      "cellDustPrice": null,
+      "prestigePrice": null,
+      "event01Price": null,
+      "steelMarksPrice": null,
+      "gildedMarksPrice": null,
+      "items": [
+        {
+          "catalogId": "DYE_GREEN01_DURABLE",
+          "quantity": 1
+        },
+        {
+          "catalogId": "DYE_GREEN02_DURABLE",
+          "quantity": 1
+        }
+      ],
+      "entitlements": [],
+      "maxAllowed": 1,
+      "remaining": 1,
+      "loadoutSlots": null,
+      "availableFrom": null,
+      "availableTo": null,
+      "timeAvailabilityReason": null,
+      "platformOfferId": null,
+      "missingEntitlementNames": null
+    },
+    {
+      "id": "bundle_dyes_palette_03",
+      "displayName": "Twilight & Bloodfire Dyes",
+      "displayDescription": "Unlocks the Twilight and Bloodfire armour dye colours.",
+      "displayPriority": 1488,
+      "tags": [
+        "webstore",
+        "dye_armour"
+      ],
+      "platinumPrice": 0,
+      "platinumSalePrice": null,
+      "cellDustPrice": null,
+      "prestigePrice": null,
+      "event01Price": null,
+      "steelMarksPrice": null,
+      "gildedMarksPrice": null,
+      "items": [
+        {
+          "catalogId": "DYE_PURPLE01_DURABLE",
+          "quantity": 1
+        },
+        {
+          "catalogId": "DYE_RED01_DURABLE",
+          "quantity": 1
+        }
+      ],
+      "entitlements": [],
+      "maxAllowed": 1,
+      "remaining": 1,
+      "loadoutSlots": null,
+      "availableFrom": null,
+      "availableTo": null,
+      "timeAvailabilityReason": null,
+      "platformOfferId": null,
+      "missingEntitlementNames": null
+    },
+    {
+      "id": "bundle_dyes_palette_04",
+      "displayName": "Bubble Gum & Sandstone Dyes",
+      "displayDescription": "Unlocks the Bubble Gum and Sandstone armour dye colours.",
+      "displayPriority": 1487,
+      "tags": [
+        "webstore",
+        "dye_armour"
+      ],
+      "platinumPrice": 0,
+      "platinumSalePrice": null,
+      "cellDustPrice": null,
+      "prestigePrice": null,
+      "event01Price": null,
+      "steelMarksPrice": null,
+      "gildedMarksPrice": null,
+      "items": [
+        {
+          "catalogId": "DYE_RED02_DURABLE",
+          "quantity": 1
+        },
+        {
+          "catalogId": "DYE_BROWN01_DURABLE",
+          "quantity": 1
+        }
+      ],
+      "entitlements": [],
+      "maxAllowed": 1,
+      "remaining": 1,
+      "loadoutSlots": null,
+      "availableFrom": null,
+      "availableTo": null,
+      "timeAvailabilityReason": null,
+      "platformOfferId": null,
+      "missingEntitlementNames": null
+    },
+    {
+      "id": "bundle_dyes_palette_05",
+      "displayName": "Espresso & Eclipse Dyes",
+      "displayDescription": "Unlocks the Espresso and Eclipse armour dye colours.",
+      "displayPriority": 1486,
+      "tags": [
+        "webstore",
+        "dye_armour"
+      ],
+      "platinumPrice": 0,
+      "platinumSalePrice": null,
+      "cellDustPrice": null,
+      "prestigePrice": null,
+      "event01Price": null,
+      "steelMarksPrice": null,
+      "gildedMarksPrice": null,
+      "items": [
+        {
+          "catalogId": "DYE_BROWN02_DURABLE",
+          "quantity": 1
+        },
+        {
+          "catalogId": "DYE_GRAY05_DURABLE",
+          "quantity": 1
+        }
+      ],
+      "entitlements": [],
+      "maxAllowed": 1,
+      "remaining": 1,
+      "loadoutSlots": null,
+      "availableFrom": null,
+      "availableTo": null,
+      "timeAvailabilityReason": null,
+      "platformOfferId": null,
+      "missingEntitlementNames": null
+    },
+    {
+      "id": "bundle_dyes_palette_06",
+      "displayName": "Supernova & Grove Dyes",
+      "displayDescription": "Unlocks the Supernova and Grove armour dye colours.",
+      "displayPriority": 1485,
+      "tags": [
+        "webstore",
+        "dye_armour"
+      ],
+      "platinumPrice": 0,
+      "platinumSalePrice": null,
+      "cellDustPrice": null,
+      "prestigePrice": null,
+      "event01Price": null,
+      "steelMarksPrice": null,
+      "gildedMarksPrice": null,
+      "items": [
+        {
+          "catalogId": "DYE_GRAY07_DURABLE",
+          "quantity": 1
+        },
+        {
+          "catalogId": "DYE_DARKTEAL_DURABLE",
           "quantity": 1
         }
       ],

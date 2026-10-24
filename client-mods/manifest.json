@@ -1,0 +1,292 @@
+{
+    "version":  1,
+    "target":  "Archon/Binaries/Win64",
+    "files":  [
+                  {
+                      "path":  "dwmapi.dll",
+                      "sha256":  "cf440b9eb8643bb7c434acfda696aee57fd981d185dca5e57fb8dbb18f8fc1cd",
+                      "size":  279552,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Circle.png",
+                      "sha256":  "68a7e45b872fffd8d7c901388a73627c31b4b3a143a30d597591285349c7e4e8",
+                      "size":  2101,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Cross.png",
+                      "sha256":  "d002026a9611d89b93db1714eae424638878d8a25e2e19349e879c73952e0eb8",
+                      "size":  2164,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/D-Pad Down.png",
+                      "sha256":  "6f23b893f72601b95c72ee4cbeb16970f1f8929a49fbd0c3bfb404088e3a354a",
+                      "size":  3701,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/D-Pad Left.png",
+                      "sha256":  "147468228e88a920ea11e521398ca3c7b0456a0e1b7f99745fcc09d30672738e",
+                      "size":  3719,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/D-Pad Right.png",
+                      "sha256":  "204b6511cbf6d9577ea94170bb6fe079e189960c41bb0ec9368f2bf9568da191",
+                      "size":  3705,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/D-Pad Up.png",
+                      "sha256":  "67827ef7c58129c9800089be689dec32af62530974bacd531d7cfd7653e74e6f",
+                      "size":  3702,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/D-Pad.png",
+                      "sha256":  "333f2ce0031e19385e97aa0f3e750d4f6a3e30a8fdb7a2515054a5460eded073",
+                      "size":  3823,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/DualSense Layout.png",
+                      "sha256":  "3a3e3c4cff18b1340ab8c53e40e8bbde347fc09678d5a46efcf3c12e0679bdf8",
+                      "size":  265514,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/L1.png",
+                      "sha256":  "8d82eece3f3820a5a376ce1a4166d68e55201b8785911c08db6b95bcd0009df7",
+                      "size":  2260,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/L2.png",
+                      "sha256":  "e8485173b006494a1c535ce748756f0b7bbca37aeb3e02c6638fd593bb56f58c",
+                      "size":  2649,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Left Stick All.png",
+                      "sha256":  "802d04baa4d9ec7c495009fdaa5b89a3c8318f7a3750101bd714ef2f9fa57ce8",
+                      "size":  5756,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Left Stick Click.png",
+                      "sha256":  "6ae41ba13617e80850dee13cca08000ff749198434da60fe5e583c4c281ef4fe",
+                      "size":  2615,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Left Stick Down.png",
+                      "sha256":  "abb0028a77586a4f4a43849d27346c61585985f1c9de0ccd7696b0d7b9f3d263",
+                      "size":  3804,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Left Stick Left.png",
+                      "sha256":  "7c54e4fe23884687bbca157ecbe234533b5abedcf81a2aeab5134f9c5796e801",
+                      "size":  3511,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Left Stick Left-Right.png",
+                      "sha256":  "36d86d1e93153b908d0cd70fb83ec9966b152a61e7c7fd83c36aab754e751f1f",
+                      "size":  4160,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Left Stick Right.png",
+                      "sha256":  "fd4bd6b69c3c7939edc0af01360d56ed70cc2e022da4a6c7d2ed8b633cea0ec0",
+                      "size":  3483,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Left Stick Up.png",
+                      "sha256":  "ade19cbcf5e06b8a6f0ed68c71c6b186c959180439e09ada3694bc3440a9a308",
+                      "size":  3725,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Left Stick Up-Down.png",
+                      "sha256":  "a2207b79dc73eef5921730d6a8b7e8240f092df2ae7e3be376f6f8b0cdec0554",
+                      "size":  4398,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/LICENSE.txt",
+                      "sha256":  "1dc206ad9778a4f39c95c1a8acebf12a558e305d2a4802307bfdfc4d5f9973f4",
+                      "size":  691,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Options.png",
+                      "sha256":  "48ad950324f7d6afee9e9f0bb4a6d39d43b6e862305c4f1ab5841a9411872e64",
+                      "size":  2306,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/R1.png",
+                      "sha256":  "541660dc90eb03d928b4010bed46214e5f852ac1357d1370c6049b518f199d44",
+                      "size":  2456,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/R2.png",
+                      "sha256":  "cbd0213d85868fd3392078cdb72278ed8030dfcb02554ebcd764699e5ea601e5",
+                      "size":  2915,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Right Stick All.png",
+                      "sha256":  "d2541697ef33ac5925cb9d1beb5956bf0a83495981657e5ecb913481f99f09c8",
+                      "size":  6029,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Right Stick Click.png",
+                      "sha256":  "972ef0f5356d03107a87c4a0cc5cf7cab30d1aa754b6abd43dc7c495fbc6b807",
+                      "size":  2778,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Right Stick Down.png",
+                      "sha256":  "73c513443e85bf0ea40a9199e58a1e206e6483af77b388059fee571512afb221",
+                      "size":  4055,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Right Stick Left.png",
+                      "sha256":  "dedeaef9f74e6654687528a006afa8e72b2eedbe6c028a0ef4fd50e833ba18b7",
+                      "size":  3783,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Right Stick Left-Right.png",
+                      "sha256":  "f490c4f1d7023f7ac46a89f28a1c4655b58960c5015e71591e17bf973768d7d3",
+                      "size":  4458,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Right Stick Right.png",
+                      "sha256":  "cbdbfe22a065da759d0b4cc453dd1fac8175eec68890ebd5752b3df6d1df4de0",
+                      "size":  3711,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Right Stick Up.png",
+                      "sha256":  "7c6a8b8e41cc0f53d4a0751eee0350b5027755cd8196d13a1445bfc0930b9361",
+                      "size":  3974,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Right Stick Up-Down.png",
+                      "sha256":  "1dae0c81953c9e7af94a538ecfcbf4ac39b1e17f6ee703c67a7cf9edb84c7c6e",
+                      "size":  4663,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Square.png",
+                      "sha256":  "5ceb786abb759689902b26a9897d656193898d211c80169cec4f0881fbcd1c4e",
+                      "size":  1827,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Touch Pad Press.png",
+                      "sha256":  "ce7a27b4294439cbcc9f5bf260b917a8075fd061cd19b311fc37f3d47ceaf62d",
+                      "size":  3392,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "PS5Icons/Triangle.png",
+                      "sha256":  "bd5c0f49b85965905f2f4706819125181010a0d9ab01f4a76c7c2f155ab57fd8",
+                      "size":  2170,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/LICENSE",
+                      "sha256":  "99e1d8f8b7cb68e8b2313380ae3b0c8115e39dfbc443fcf21fd67ab74ce1d57e",
+                      "size":  1085,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/BehemothHealthBars/Scripts/main.lua",
+                      "sha256":  "20bb8d111b3c56543d4f45469e399df07f29c6b8af094cdbe33c7ef4ef6ab73c",
+                      "size":  34546,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/BehemothTracker/Scripts/main.lua",
+                      "sha256":  "cc9ff0a36c1eaa17d46b57b6fbb6e21d372037f49357fbc2dc6ae1bd5114d7c3",
+                      "size":  21765,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/CraftStar/Scripts/main.lua",
+                      "sha256":  "ec65075464d4c3ee6987dde94be452e2431e50bc0de6addf29fa626be7e591bd",
+                      "size":  8548,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/Keybinds/Scripts/main.lua",
+                      "sha256":  "297dd6f7f560e1cebc15cd4509ad481495d9179f5758a8034be4c417a369803a",
+                      "size":  4190,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/ModMenu/Scripts/main.lua",
+                      "sha256":  "3b5de41871636d4e94b32ca516904739dacbb973e049aa5d916d2718ce7a1199",
+                      "size":  27026,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/mods.txt",
+                      "sha256":  "b4204bff94ce95caef3f00cabe7be3e3fc5f382597f9878aeb8cf4d19e9604b4",
+                      "size":  121,
+                      "keep":  true
+                  },
+                  {
+                      "path":  "ue4ss/Mods/shared/FrameTick/FrameTick.lua",
+                      "sha256":  "a06109ff9f7748e30b89b06e94197468b3aff9e25cf4cf48c1c40c33d0c85c76",
+                      "size":  4359,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/shared/ModSettings/ModSettings.lua",
+                      "sha256":  "7ca975dabbcd57522367b23297785f99b249a3ae6f370217ac0580c91896cdb0",
+                      "size":  2083,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/Mods/shared/UEHelpers/UEHelpers.lua",
+                      "sha256":  "7476f02eef0c87bfeab169f2ffe2e704363faeaae4bf9f1bda574b1e34f4a0e9",
+                      "size":  10237,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/UE4SS.dll",
+                      "sha256":  "680a026890abb4d0df2211251f8defc1681a584275f1521dcc0fe30af480006f",
+                      "size":  20605440,
+                      "keep":  false
+                  },
+                  {
+                      "path":  "ue4ss/UE4SS-settings.ini",
+                      "sha256":  "a570cf325e142f5e01c99e72c4fe41dee05cb8980f230be40136e779465a381c",
+                      "size":  9420,
+                      "keep":  true
+                  }
+              ],
+    "remove":  [
+                   "ue4ss/Mods/ZFXStatus/Scripts/main.lua",
+                   "ue4ss/Mods/ZFXStatus/zfx_logo.png",
+                   "ue4ss/Mods/shared/FrameTick/hb_BehemothHealthBars.txt",
+                   "ue4ss/Mods/shared/FrameTick/hb_BehemothTracker.txt",
+                   "ue4ss/Mods/shared/FrameTick/hb_ModMenu.txt"
+               ],
+    "disable":  [
+                    "ZFXStatus"
+                ]
+}

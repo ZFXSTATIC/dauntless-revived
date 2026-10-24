@@ -7,12 +7,12 @@ $ErrorActionPreference = "Stop"
 $Repo = Split-Path $PSScriptRoot -Parent
 $Pinned = @{
   "dxgi.dll"                    = "9A431D7B6FD20C43FA92BEBD91C3BC023EC7A3FCBC52871C41F4DF293D4B0D1F"
-  "UndauntedInternalServer.dll" = "19A551192C8BA1EA5061D88F1D5C5B8A065DBC4AF04FA341ECAEE5A3D66B519E"
+  "UndauntedInternalServer.dll" = "6f2433abebdee451edfc9060fa58eb3e2a3e73e5f7063de05386316b52d7b30b"
 }
 
 $commit = (git -C $Repo rev-parse HEAD).Trim()
-$dirty = [bool](git -C $Repo status --porcelain -- friend-kit)
-if ($dirty) { throw "friend-kit\ has uncommitted changes. Commit and push first, so SOURCE.txt names real code." }
+$dirty = [bool](git -C $Repo status --porcelain -- friend-kit client-mods)
+if ($dirty) { throw "friend-kit\ or client-mods\ has uncommitted changes. Commit and push first, so SOURCE.txt names real code." }
 $remote = (git -C $Repo remote get-url origin).Trim() -replace '\.git$', ''
 
 $Stage = Join-Path $Out "DauntlessRevived-FriendKit"
@@ -28,6 +28,8 @@ foreach ($name in $Pinned.Keys) {
   Copy-Item -LiteralPath $src -Destination (Join-Path $Stage "dll")
 }
 Copy-Item -LiteralPath (Join-Path $Repo "LICENSE.txt") -Destination $Stage
+# UE4SS and the client mods; setup.ps1 installs them (checked against client-mods\manifest.json).
+Copy-Item -LiteralPath (Join-Path $Repo "client-mods") -Destination (Join-Path $Stage "client-mods") -Recurse
 @(
   "Dauntless Revived - source code (AGPL-3.0)",
   "",

@@ -1,0 +1,13 @@
+# Hunt queue delays, October 17
+
+Live deploy logs showed CPU admission refusing EU overflow at 35/42 hunts and 88–89% CPU, US at 31–32/38 and 89.5%, and Germany at 18–21/96 and 69–74%. The guard blocks at 80% and resumes at 65%; raising hunt counts alone does not restore admission. These observations explain capacity waits, but do not measure every reported 15–20 minute wait.
+
+The live backend lacked the repository's CapacityTurns wrapper. Deployed only matchmaking.js and capacityturns.js after comparing actual live code; 62 matchmaking tests passed. Backup: C:/DauntlessRevived/backups/queue-wait-20261018-011910. Ordering improves access for waiting queues, but is not strict FIFO for requests already in flight.
+
+The restart exposed a separate port conflict: metagame failed with EACCES on 127.0.0.1:61000; sshd.exe PID 5188 held Bound 0.0.0.0:61000. Windows TCP dynamic range 49152–65535 included the backend port. Changed IPv4 and IPv6 dynamic TCP ranges with `netsh int ipv4 set dynamicport tcp start=32768 num=16384` and the equivalent ipv6 command, then stopped only the verified conflicting SSH session process. The supervisor recovered the backend. Two subsequent probes returned public HTTP 200, no dashboard error, all five hosts reporting, with player totals increasing from 178 to 232. Revalidate the chosen dynamic range if service port assignments change.
+
+Additional deploy-server patch caches only explicit capacity_unavailable HTTP 503 responses for 1–30 seconds, keyed by worker origin and GameMode, preserving local fallback and ambiguous POST failure behavior. Full deploy-server suite: 102 passed. Compiled overflow.js differs from the actual live file only by this patch. Staged at C:/DauntlessRevived/staging/queue-wait-20261017/overflow.new.js; NOT activated yet. Activating requires a scoped deploy-service restart and needs timing coordination because hunts are active. Never restart the whole stack for this change.
+
+## Activation after user-approved emergency maintenance
+
+Activated overflow.js on October 17 local time (October 18 UTC), SHA256 720883F79EF8D5726CC13A8A45297262493405D098E7A00F80A17D88A04E91BA. Backup: C:/DauntlessRevived/backups/overflow-retry-20261018-012824.js. `Stack.ps1 restart -Only deploy -NoBackup` stopped the old allocator and ten owned game processes; it did not restart metagame or gateway. Supervisor started allocator PID6300, listening on61001. Logs showed successful primary Escalation allocation and worker Ramsgate routing. Public gateway returned200, dashboard error null, five hosts reporting,241players. CPU refusals and worker probe failures still occur; this does not establish that all long waits are resolved. The earlier staged-only status above is superseded by this activation.

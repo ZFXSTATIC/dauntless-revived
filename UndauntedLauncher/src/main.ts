@@ -6,11 +6,17 @@
 
 import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, protocol, safeStorage, screen, session, shell, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
+import { freemem } from "node:os";
+import { PortableOfflineSave } from "./main/offline-save";
+import { electronSaveDatabase } from "./main/offline-save-runtime";
+import { offlineLayout } from "./main/offline-layout";
+import { KeyStore, type Encryptor } from "./main/keystore";
 import { existsSync, promises as fsp } from "node:fs";
 import { pathToFileURL } from "node:url";
 import started from "electron-squirrel-startup";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
-import { Controller, type Platform } from "./main/controller";
+import { Controller, type Platform, type OfflineStackSession } from "./main/controller";
+import { DEFAULT_SERVER } from "./main/settings";
 import { GAME_MANIFEST, GAME_MANIFEST_FINGERPRINT, GAME_MANIFEST_PROBLEM } from "./main/game-manifest";
 import { findRunningClients } from "./main/launch";
 import { LinuxRuntimeMissingError, prepareLinuxGameLaunch } from "./main/linux-runtime";
@@ -24,9 +30,11 @@ import { findTailscale } from "./main/system";
 import { describeError, log, logToFile } from "./main/log";
 import { boundedString, externalTarget, isTrustedPageUrl, relayPortOverride, settingsPatch } from "./main/ipc-validate";
 import { INVITE_SCHEME, parseInvite } from "./shared/invite";
-import { IPC, type Snapshot, type TaskProgress } from "./shared/types";
-import { translate } from "./shared/i18n";
+import { IPC, type Snapshot, type OfflineStatus, type TaskProgress } from "./shared/types";
+import { systemLanguage, translate } from "./shared/i18n";
 import { APP_ID, SQUIRREL_NAME, UPDATE_FEED_URL } from "./main/constants";
+import { LocalStackManager } from "./main/local-stack";
+import { makeLocalStack } from "./main/local-stack-factory";
 
 // Squirrel install / update / uninstall events: create or remove shortcuts, then quit.
 if (started) app.quit();
@@ -44,6 +52,7 @@ if (
 
 // Every renderer runs in the Chromium sandbox, whatever a window's own options say.
 app.enableSandbox();
+if (process.argv.includes("--safe-mode")) app.disableHardwareAcceleration();
 nativeTheme.themeSource = "dark";
 app.setAppUserModelId(process.platform === "win32" && app.isPackaged ? `com.squirrel.${SQUIRREL_NAME}.${SQUIRREL_NAME}` : APP_ID);
 
@@ -58,15 +67,54 @@ const RENDERER_INDEX_URL = pathToFileURL(RENDERER_INDEX).toString();
 const CSP =
   "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' dr-art: data:; font-src 'self'; " +
   "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'";
-
 let mainWindow: BrowserWindow | null = null;
 let controller: Controller | null = null;
 let pendingInviteLink: string | null = null;
 let quitting = false;
 let linuxUpdate: LinuxUpdate | null = null;
+let localStack: LocalStackManager | null = null;
+
 
 function resourcesDir(): string {
   return app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "assets");
+}
+
+function makeLauncherLocalStack(): LocalStackManager | null {
+  const stack = makeLocalStack({
+    packaged: app.isPackaged,
+    platform: process.platform,
+    resourcesPath: process.resourcesPath,
+    userDataDir: app.getPath("userData"),
+    appPath: app.getAppPath(),
+    env: process.env,
+    gameRoot: () => {
+      if (!controller) throw new Error("Launcher controller is not ready");
+      return controller.installDir;
+    },
+  });
+  stack?.onChange((snapshot) => {
+    log.info(
+        `local stack: ${snapshot.state}` +
+        (snapshot.error ? ` (${snapshot.error})` : ""),
+    );
+  });
+  return stack;
+}
+async function startLocalOfflineStack(onPhase: (phase: "starting-metagame" | "starting-deploy") => void,): Promise<OfflineStackSession | null> {const stack = localStack;
+  if (!stack) return null;
+  const unsubscribe = stack.onChange((snapshot) => {
+    if (snapshot.state === "starting-metagame" || snapshot.state === "starting-deploy") {onPhase(snapshot.state);}});
+  try {
+    if (stack.snapshot.state === "stopped" || stack.snapshot.state === "failed") {await stack.start();}} finally {unsubscribe();}
+  if (stack.snapshot.state !== "ready") {throw new Error(`local stack is not ready (${stack.snapshot.state})`);}
+  return {
+    endpoint: {
+      host: "127.0.0.1",
+      port: 61000,
+      pin: null,
+    },
+    stop: () => stack.stop(),
+  };
 }
 
 async function ensureLinuxSecureStorageDependency(): Promise<boolean> {
@@ -160,36 +208,68 @@ function createWindow(): void {
   });
   mainWindow.removeMenu();
   mainWindow.once("ready-to-show", () => mainWindow?.show());
+  const window = mainWindow;
+  const showTimer = setTimeout(() => { if (!window.isDestroyed()) window.show(); }, 10000);
+  window.once("closed", () => clearTimeout(showTimer));
+  window.webContents.on("render-process-gone", (_event, details) => {
+    log.error(`launcher renderer stopped: ${details.reason}`);
+    if (!process.argv.includes("--safe-mode") && !controller?.relayActive && !controller?.offlineGameActive) {
+      app.relaunch({args: [...process.argv.slice(1), "--safe-mode"]});
+      app.exit(0);
+    } else {
+      dialog.showErrorBox("Dauntless Revived could not open", "The launcher renderer stopped. Reinstall the latest launcher and send the launcher logs to support.");
+    }
+  });
   mainWindow.on("maximize", () => mainWindow?.webContents.send(IPC.windowState, true));
   mainWindow.on("unmaximize", () => mainWindow?.webContents.send(IPC.windowState, false));
 
-  // In public mode the launcher carries the game's connection. Closing it would cut the game off,
-  // so ask first.
+  // Public relay and offline play both depend on launcher-owned background processes.
+  // Closing the launcher underneath either one would disconnect the running game.
   mainWindow.on("close", (event) => {
-    if (quitting || !controller?.relayActive || !mainWindow) return;
+    if (quitting || !controller || !mainWindow) return;
+
+    const closeReason = controller.offlineGameActive
+        ? "offline"
+        : controller.relayActive
+            ? "relay"
+            : null;
+
+    if (closeReason === null) return;
+
     const lang = controller.snapshot().settings.language;
     const choice = dialog.showMessageBoxSync(mainWindow, {
       type: "warning",
       title: translate(lang, "app_title"),
       message: translate(lang, "close_title"),
-      detail: translate(lang, "close_text"),
-      buttons: [translate(lang, "close_keep"), translate(lang, "close_anyway")],
+      detail: translate(
+          lang,
+          closeReason === "offline" ? "close_text_offline" : "close_text",
+      ),
+      buttons: [
+        translate(lang, "close_keep"),
+        translate(lang, "close_anyway"),
+      ],
       defaultId: 0,
       cancelId: 0,
       noLink: true,
     });
+
     if (choice === 0) {
       event.preventDefault();
       mainWindow.minimize();
-      controller.setNotice("keep_open");
+
+      if (closeReason === "relay") controller.setNotice("keep_open");
     }
   });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
 
-  if (DEV_SERVER_URL) void mainWindow.loadURL(DEV_SERVER_URL);
-  else void mainWindow.loadFile(RENDERER_INDEX);
+  const loaded = DEV_SERVER_URL ? mainWindow.loadURL(DEV_SERVER_URL) : mainWindow.loadFile(RENDERER_INDEX);
+  void loaded.catch((error) => {
+    log.error(`launcher page failed: ${describeError(error)}`);
+    dialog.showErrorBox("Dauntless Revived could not open", "The launcher page could not load. Reinstall the latest launcher. Your account and game files are kept.");
+  });
 }
 
 function hardenSessions(): void {
@@ -270,6 +350,26 @@ function handle(channel: string, fn: (event: IpcMainInvokeEvent, ...args: unknow
 }
 
 function registerIpc(c: Controller): void {
+  // Offline play's save backups. The file dialogs stay in the main process: the page never names a path.
+  handle(IPC.offlineExportSave, async () => {
+    if (!mainWindow) return { ok: false, error: { code: "cancelled" } };
+    const stamp = new Date().toISOString().slice(0, 10);
+    const r = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: path.join(app.getPath("documents"), `Dauntless Revived offline save ${stamp}.drsave`),
+      filters: [{ name: "Dauntless Revived offline save", extensions: ["drsave"] }],
+      properties: ["dontAddToRecent", "showOverwriteConfirmation"],
+    });
+    return r.canceled || !r.filePath ? { ok: false, error: { code: "cancelled" } } : c.exportOfflineSave(r.filePath);
+  });
+  handle(IPC.offlineImportSave, async () => {
+    if (!mainWindow) return { ok: false, error: { code: "cancelled" } };
+    const r = await dialog.showOpenDialog(mainWindow, {
+      defaultPath: app.getPath("documents"),
+      filters: [{ name: "Dauntless Revived offline save", extensions: ["drsave"] }],
+      properties: ["openFile", "dontAddToRecent"],
+    });
+    return r.canceled || r.filePaths.length !== 1 ? { ok: false, error: { code: "cancelled" } } : c.importOfflineSave(r.filePaths[0]);
+  });
   handle(IPC.getSnapshot, () => c.snapshot());
   handle(IPC.checkInvite, (_e, text) => {
     const s = boundedString(text, 2048);
@@ -281,9 +381,15 @@ function registerIpc(c: Controller): void {
   });
   handle(IPC.retryConnect, () => c.connect());
   handle(IPC.forgetServer, () => c.forgetServer());
+  handle(IPC.switchServer, (_e, id) => (typeof id === "string" && /^[0-9a-f]{24}$/.test(id) ? c.switchServer(id) : { ok: false, error: { code: "invite_invalid_format" } }));
+  handle(IPC.removeSavedServer, (_e, id) => (typeof id === "string" && /^[0-9a-f]{24}$/.test(id) ? c.removeSavedServer(id) : { ok: false, error: { code: "invite_invalid_format" } }));
   handle(IPC.register, (_e, username) => {
     const s = boundedString(username, 32);
     return s === null ? { ok: false, error: { code: "username_invalid" } } : c.register(s);
+  });
+  handle(IPC.setInviteCode, (_e, text) => {
+    const s = boundedString(text, 8192);
+    return s === null ? { ok: false, error: { code: "invite_invalid_format" } } : c.setInviteCode(s);
   });
   handle(IPC.useExistingKey, (_e, text) => {
     const s = boundedString(text, 8192);
@@ -304,6 +410,15 @@ function registerIpc(c: Controller): void {
   handle(IPC.cancelTask, () => c.cancelTask());
   handle(IPC.repair, () => c.repair());
   handle(IPC.play, () => c.play());
+  handle(IPC.startOffline, (_e, username) => {
+    if (username === undefined) return c.startOffline();
+    const s = boundedString(username, 32);
+    return s === null
+        ? { ok: false, error: { code: "username_invalid" } }
+        : c.startOffline(s);
+  });
+  handle(IPC.stopOffline, () => c.stopOffline());
+  handle(IPC.offlineStatus, () => c.offlineStatus());
   handle(IPC.setSettings, (_e, patch) => {
     const p = settingsPatch(patch);
     return p === null ? c.setSettings({}) : c.setSettings(p);
@@ -341,7 +456,7 @@ function registerIpc(c: Controller): void {
 // ------------------------------------------------------------------ platform for the controller
 
 function makePlatform(): Platform {
-  const send = (channel: string, payload: Snapshot | TaskProgress) => {
+  const send = (channel: string, payload: Snapshot | TaskProgress | OfflineStatus) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
   };
   const localAppData = process.env.LOCALAPPDATA ?? path.join(app.getPath("home"), "AppData", "Local");
@@ -349,21 +464,33 @@ function makePlatform(): Platform {
     process.platform === "linux" ? path.join(app.getPath("home"), "Games", "DauntlessRevived") : path.join(localAppData, "DauntlessRevived", "Game");
   const relayPort = relayPortOverride(process.env.DAUNTLESS_REVIVED_RELAY_PORT);
   if (relayPort !== undefined) log.warn(`relay port overridden to ${relayPort}`);
+  const encryptor: Encryptor = {
+    isAvailable: () => safeStorage.isEncryptionAvailable(),
+    encrypt: plain => safeStorage.encryptString(plain),
+    decrypt: data => safeStorage.decryptString(data),
+  };
+  const layout = offlineLayout(process.resourcesPath, app.getPath("userData"));
   return {
     userDataDir: app.getPath("userData"),
+    documentsDir: app.getPath("documents"),
     resourcesDir: resourcesDir(),
     defaultInstallDir,
     hostPlatform: process.platform,
     appVersion: app.getVersion(),
     packaged: app.isPackaged,
-    defaultLanguage: app.getLocale().toLowerCase().startsWith("fi") ? "fi" : "en",
+    defaultLanguage: systemLanguage(app.getLocale()),
+    systemLocale: app.getLocale(),
     relayPort,
-    encryptor: {
-      isAvailable: () => safeStorage.isEncryptionAvailable(),
-      encrypt: (plain) => safeStorage.encryptString(plain),
-      decrypt: (data) => safeStorage.decryptString(data),
-    },
+    encryptor,
+    offlineSave: app.isPackaged && process.platform === "win32" ? new PortableOfflineSave({
+      layout, userData: app.getPath("userData"),
+      keys: new KeyStore(path.join(app.getPath("userData"), "keys"), encryptor),
+      database: electronSaveDatabase(layout.runtimeRoot, layout.metagameDir),
+      isActive: () => (!!localStack && !["stopped", "failed"].includes(localStack.snapshot.state)) ||
+        !!controller?.snapshot().game.running || !!controller?.snapshot().task || controller?.offlineStatus().phase === "stopping",
+    }) : undefined,
     manifest: GAME_MANIFEST,
+    defaultServer: DEFAULT_SERVER,
     chooseFolder: async (purpose, defaultPath) => {
       if (!mainWindow) return null;
       const lang = controller?.snapshot().settings.language ?? "en";
@@ -397,8 +524,12 @@ function makePlatform(): Platform {
     },
     emitSnapshot: (s) => send(IPC.snapshot, s),
     emitProgress: (p) => send(IPC.progress, p),
+    emitOfflineStatus: (s) => send(IPC.offlineStatusChanged, s),
     findTailscale: () => findTailscale(process.env, existsSync, process.platform),
     findRunningClients: () => findRunningClients(process.platform),
+    startOfflineStack: localStack ? (onPhase) => startLocalOfflineStack(onPhase) : undefined,
+    // Development stacks retain their own configured admission policy.
+    offlineFreeMemory: app.isPackaged && process.platform === "win32" ? freemem : undefined,
     prepareGameLaunch:
       process.platform === "linux"
         ? async () => {
@@ -447,6 +578,7 @@ if (!started) {
       Menu.setApplicationMenu(null);
       logToFile(path.join(app.getPath("userData"), "logs"));
       log.info(`Dauntless Revived Launcher ${app.getVersion()} starting`);
+      localStack = makeLauncherLocalStack();
       if (process.platform === "linux") {
         log.info(
           `secure storage backend ${safeStorage.getSelectedStorageBackend()}, encryption ${safeStorage.isEncryptionAvailable() ? "available" : "unavailable"}`,
@@ -485,6 +617,10 @@ if (!started) {
           logger: { log: (m) => log.info(`update: ${m}`), info: (m) => log.info(`update: ${m}`), warn: (m) => log.warn(`update: ${m}`), error: (m) => log.error(`update: ${m}`) },
         });
       }
+    }).catch((error) => {
+      log.error(`launcher startup failed: ${describeError(error)}`);
+      dialog.showErrorBox("Dauntless Revived could not open", `Startup failed. Send the launcher logs to support.\n${describeError(error)}`);
+      app.exit(1);
     });
 
     app.on("before-quit", () => {
@@ -493,8 +629,17 @@ if (!started) {
 
     app.on("window-all-closed", () => {
       const c = controller;
+      const stack = localStack;
       controller = null;
-      void (c ? c.shutdown() : Promise.resolve()).finally(() => app.quit());
+      localStack = null;
+
+      const shutdown = c
+          ? c.shutdown()
+          : stack
+              ? stack.stop()
+              : Promise.resolve();
+
+      void shutdown.finally(() => app.quit());
     });
   }
 }

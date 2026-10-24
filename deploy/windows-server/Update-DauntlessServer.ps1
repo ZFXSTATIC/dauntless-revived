@@ -72,7 +72,7 @@ function Update-Kit([string]$From) {
     if (-not (Test-Path -LiteralPath (Join-Path $kit 'DauntlessServer.Common.ps1'))) { Write-DRWarn 'the new code has no deploy\windows-server; kit scripts left as they are'; return }
     foreach ($f in Get-ChildItem -LiteralPath $kit -File | Where-Object { $_.Extension -in '.ps1', '.vbs', '.md' }) { Copy-Item -LiteralPath $f.FullName -Destination $P.Bin -Force }
     New-Item -ItemType Directory -Force -Path (Join-Path $P.Bin 'lib') | Out-Null
-    Copy-Item -Path (Join-Path $kit 'lib\*.js') -Destination (Join-Path $P.Bin 'lib') -Force
+    Get-ChildItem -LiteralPath (Join-Path $kit 'lib') -File | Where-Object { $_.Extension -in '.js', '.cjs' } | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $P.Bin 'lib') -Force }
     Write-DROk "kit scripts in $($P.Bin) refreshed from the new code"
 }
 

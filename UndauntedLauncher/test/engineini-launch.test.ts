@@ -8,7 +8,7 @@ import { applyGameConfig, defaultConfigDir, rewriteEngineIniText, splitLines, sy
 import { settingsPatch } from "../src/main/ipc-validate";
 import { sanitizeSettings } from "../src/main/settings";
 import { EXPOSURE_MODES, type ExposureMode } from "../src/shared/types";
-import { buildLaunchArgs, describeLaunch, FIXED_ARGS, GameProcess, maskArgs, type SpawnFn } from "../src/main/launch";
+import { buildLaunchArgs, describeLaunch, FIXED_ARGS, GameProcess, gameLocale, maskArgs, type SpawnFn } from "../src/main/launch";
 import { addSecret, redact, setSink, log } from "../src/main/log";
 
 const KEY = "UUK_" + "0123456789abcdef".repeat(3);
@@ -180,12 +180,29 @@ test("launch args follow contract 6", () => {
     "-epicsandboxid=sandboxidlol",
     "-epicdeploymentid=deploymentidlol",
     "-NoEAC",
+    "-RamsStore",
   ]);
   const windowed = buildLaunchArgs({ host: "hostpc.ts.net", port: 61000, key: KEY, windowed: true });
   assert.deepEqual(windowed.slice(-3), ["-windowed", "-ResX=1280", "-ResY=720"]);
   assert.throws(() => buildLaunchArgs({ host: "100.64.0.7", port: 61000, key: "bad key with spaces", windowed: false }));
   assert.throws(() => buildLaunchArgs({ host: "bad host", port: 61000, key: KEY, windowed: false }));
   assert.throws(() => buildLaunchArgs({ host: "100.64.0.7", port: 0, key: KEY, windowed: false }));
+});
+
+test("the game language becomes -epiclocale; auto follows the system when the game has that language", () => {
+  const locale = (gameLocale: string | undefined) =>
+    buildLaunchArgs({ host: "100.64.0.7", port: 61000, key: KEY, windowed: false, gameLocale }).filter((a) => a.startsWith("-epiclocale="));
+  assert.deepEqual(locale(undefined), ["-epiclocale=en-US"]);
+  assert.deepEqual(locale("es-ES"), ["-epiclocale=es-ES"]);
+  assert.deepEqual(locale("pt-BR"), ["-epiclocale=pt-BR"]);
+  assert.deepEqual(locale("xx-XX"), ["-epiclocale=en-US"], "never an argument the game has no text for");
+  assert.equal(gameLocale("auto", "es-ES"), "es-ES");
+  assert.equal(gameLocale("auto", "es-419"), "es-ES");
+  assert.equal(gameLocale("auto", "de"), "de-DE");
+  assert.equal(gameLocale("auto", "pt-PT"), "pt-BR");
+  assert.equal(gameLocale("auto", "fi-FI"), "en-US", "no Finnish text in the game");
+  assert.equal(gameLocale("auto", ""), "en-US");
+  assert.equal(gameLocale("ja-JP", "en-US"), "ja-JP", "a chosen language wins over the system");
 });
 
 test("the key is masked in anything that can be logged", () => {
@@ -214,21 +231,24 @@ test("GameProcess: tracks start and exit, and refuses to start twice", async () 
   let child: EventEmitter | null = null;
   const fakeSpawn = ((exe: string, args: string[], opts: { cwd: string }) => {
     calls.push({ exe, args, cwd: opts.cwd });
-    child = new EventEmitter();
+    child = Object.assign(new EventEmitter(), { pid: 4321 });
     setImmediate(() => child!.emit("spawn"));
     return child;
   }) as unknown as SpawnFn;
   const gp = new GameProcess(fakeSpawn);
+  assert.equal(gp.pid, undefined);
   const events: boolean[] = [];
   gp.onChange((running) => events.push(running));
   await gp.start("C:\\game\\Archon\\Binaries\\Win64", ["a"]);
   assert.equal(gp.running, true);
+  assert.equal(gp.pid, 4321);
   await assert.rejects(gp.start("C:\\game\\Archon\\Binaries\\Win64", ["a"]));
   assert.equal(calls.length, 1);
   assert.ok(calls[0].exe.endsWith("Dauntless-Win64-Shipping.exe"));
   assert.equal(calls[0].cwd, "C:\\game\\Archon\\Binaries\\Win64");
   (child as unknown as EventEmitter).emit("exit", 0);
   assert.equal(gp.running, false);
+  assert.equal(gp.pid, undefined);
   assert.deepEqual(events, [true, false]);
 });
 
@@ -307,11 +327,39 @@ test("Engine.ini: experimental Basic mode remains adaptive and can be reverted",
 });
 
 test("exposure setting defaults to the game and rejects unexpected renderer values", () => {
+  {
+    const a = { mode: "public", host: "203.0.113.10", port: 443, name: "A", share: null, fp: "a".repeat(64), code: null };
+    const b = { mode: "public", host: "203.0.113.20", port: 443, name: "B", share: null, fp: "b".repeat(64), code: null };
+    const bad = { mode: "public", host: "203.0.113.30", port: 443, name: "C", share: null, fp: "nope", code: null };
+    const s = sanitizeSettings({ server: { ...a, name: "A renamed" }, savedServers: [b, a, bad, b] }, "en");
+    assert.deepEqual(s.savedServers.map((sv) => sv.name), ["B", "A renamed"], "deduplicated, invalid dropped, the current entry kept up to date");
+    assert.deepEqual(sanitizeSettings({ server: a }, "en").savedServers.map((sv) => sv.name), ["A"], "older settings: the current server is added");
+    assert.deepEqual(sanitizeSettings({ savedServers: "x" }, "en").savedServers, []);
+  }
   assert.equal(sanitizeSettings({}, "en").exposure, "game");
+  assert.equal(sanitizeSettings({}, "en").streamerMode, false, "streamer mode is off by default");
+  assert.equal(sanitizeSettings({ streamerMode: true }, "en").streamerMode, true);
+  assert.equal(sanitizeSettings({ streamerMode: "yes" }, "en").streamerMode, false, "only a real true turns it on");
   assert.equal(sanitizeSettings({ exposure: "basic" }, "en").exposure, "basic");
   assert.equal(sanitizeSettings({ exposure: "manual" }, "en").exposure, "game");
   assert.deepEqual(settingsPatch({ exposure: "basic" }), { exposure: "basic" });
   assert.equal(settingsPatch({ exposure: "manual" }), null);
+});
+
+test("the log window setting defaults to hidden and takes only true or false", () => {
+  assert.equal(sanitizeSettings({}, "en").showConsole, false);
+  assert.equal(sanitizeSettings({ showConsole: true }, "en").showConsole, true);
+  assert.equal(sanitizeSettings({ showConsole: "yes" }, "en").showConsole, false);
+  assert.deepEqual(settingsPatch({ showConsole: true }), { showConsole: true });
+  assert.equal(settingsPatch({ showConsole: "yes" }), null);
+});
+
+test("game language setting defaults to automatic and rejects unexpected renderer values", () => {
+  assert.equal(sanitizeSettings({}, "en").gameLanguage, "auto");
+  assert.equal(sanitizeSettings({ gameLanguage: "ru-RU" }, "en").gameLanguage, "ru-RU");
+  assert.equal(sanitizeSettings({ gameLanguage: "fi-FI" }, "en").gameLanguage, "auto");
+  assert.deepEqual(settingsPatch({ gameLanguage: "es-ES" }), { gameLanguage: "es-ES" });
+  assert.equal(settingsPatch({ gameLanguage: "es" }), null);
 });
 
 test("stored game folders stay native to the host platform", () => {

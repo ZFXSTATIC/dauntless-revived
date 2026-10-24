@@ -6,12 +6,14 @@ import path from "node:path";
 import { isValidHost } from "../shared/invite";
 import { isPlausibleAccountKey } from "../shared/username";
 import { EXE_NAME } from "./constants";
+import type { GameLanguage } from "../shared/types";
 
 export interface LaunchSettings {
   host: string;
   port: number;
   key: string;
   windowed: boolean;
+  gameLocale?: string; // -epiclocale; English when left out
 }
 
 export const FIXED_ARGS = [
@@ -28,14 +30,27 @@ export const FIXED_ARGS = [
   // The pinned 1.4.4 executable explicitly supports this client-mode switch.
   // Private-server launches do not use the original EAC bootstrapper.
   "-NoEAC",
+  "-RamsStore",
 ];
+
+// The -epiclocale for the Game language setting. "auto" takes the operating system's language when
+// the game has text for it (es-419 -> es-ES, pt-PT -> pt-BR), and English otherwise.
+export function gameLocale(setting: GameLanguage, systemLocale: string): string {
+  if (setting !== "auto") return setting;
+  const code = systemLocale.toLowerCase().slice(0, 2);
+  return GAME_LOCALES.find((l) => l.toLowerCase().startsWith(`${code}-`)) ?? "en-US";
+}
+
+const GAME_LOCALES = ["en-US", "de-DE", "es-ES", "fr-FR", "it-IT", "ja-JP", "pt-BR", "ru-RU"];
 
 export function buildLaunchArgs(s: LaunchSettings): string[] {
   if (!isValidHost(s.host)) throw new Error("invalid host");
   if (!Number.isInteger(s.port) || s.port < 1 || s.port > 65535) throw new Error("invalid port");
   if (!isPlausibleAccountKey(s.key)) throw new Error("invalid key");
   // The first argument is the server address; UndauntedInternalServer.dll reads it.
-  const args = [`${s.host}:${s.port}`, `-AUTH_PASSWORD=${s.key}`, ...FIXED_ARGS];
+  const locale = s.gameLocale && GAME_LOCALES.includes(s.gameLocale) ? s.gameLocale : "en-US";
+  const fixed = FIXED_ARGS.map((a) => (a.startsWith("-epiclocale=") ? `-epiclocale=${locale}` : a));
+  const args = [`${s.host}:${s.port}`, `-AUTH_PASSWORD=${s.key}`, ...fixed];
   if (s.windowed) args.push("-windowed", "-ResX=1280", "-ResY=720");
   return args;
 }
@@ -67,11 +82,16 @@ export class GameProcess {
     return this.child !== null;
   }
 
+  get pid(): number | undefined {
+    return this.child?.pid;
+  }
+
   onChange(fn: (running: boolean, code: number | null) => void): void {
     this.listeners.push(fn);
   }
 
-  start(win64Dir: string, args: string[], runtime?: LaunchRuntime): Promise<void> {
+  // extraEnv: added to the game's environment (DR_SHOW_CONSOLE=1 keeps the DLL's log window visible).
+  start(win64Dir: string, args: string[], runtime?: LaunchRuntime, extraEnv?: Record<string, string>): Promise<void> {
     if (this.child) return Promise.reject(new Error("already running"));
     const exe = path.join(win64Dir, EXE_NAME);
     const command = runtime?.command ?? exe;
@@ -82,7 +102,7 @@ export class GameProcess {
         stdio: "ignore",
         windowsHide: false,
         detached: false,
-        env: runtime?.env ?? process.env,
+        env: extraEnv ? { ...(runtime?.env ?? process.env), ...extraEnv } : runtime?.env ?? process.env,
       });
       let started = false;
       child.once("spawn", () => {

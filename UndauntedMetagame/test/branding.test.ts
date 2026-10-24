@@ -14,7 +14,8 @@ const SRC = path.join(__dirname, "..", "..", "src");
 const WIRE = [
     /\/undaunted\/api\b/gi,
     /\bx-undaunted-(user-api-key|gameserver-apikey)\b/g,
-    /^undaunted-metagame$/g
+    /^undaunted-metagame$/g,
+    /^undaunted\.db$/g // existing Windows backup format; not a product-facing label
 ];
 
 function NamesProduct(Text: string){

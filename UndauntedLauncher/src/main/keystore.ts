@@ -10,7 +10,7 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { isValidFingerprint } from "../shared/invite";
 import { isPlausibleAccountKey } from "../shared/username";
-import { addSecret, removeSecret } from "./log";
+import { addSecret, removeSecret, log } from "./log";
 
 export interface Encryptor {
   isAvailable(): boolean;
@@ -49,7 +49,7 @@ interface StoredKey {
 }
 
 export class KeyStore {
-  constructor(private readonly dir: string, private readonly crypto: Encryptor) {}
+  constructor(private readonly dir: string, private readonly crypto: Encryptor, private readonly recoveryDir?: string) {}
 
   private file(slot: KeySlot): string {
     return path.join(this.dir, `${serverId(slot.host, slot.port, slot.mode)}.key`);
@@ -57,15 +57,20 @@ export class KeyStore {
 
   private async read(slot: KeySlot): Promise<StoredKey | null> {
     let data: Buffer;
+    let recovery = false;
     try {
       data = await fsp.readFile(this.file(slot));
     } catch {
-      return null;
+      if (!this.recoveryDir) return null;
+      try {
+        data = await fsp.readFile(path.join(this.recoveryDir, `${serverId(slot.host, slot.port, slot.mode)}.txt`));
+        recovery = true;
+      } catch { return null; }
     }
-    if (!this.crypto.isAvailable()) throw new KeyStoreError("unavailable");
+    if (!recovery && !this.crypto.isAvailable()) throw new KeyStoreError("unavailable");
     let text: string;
     try {
-      text = this.crypto.decrypt(data);
+      text = recovery ? data.toString("utf8") : this.crypto.decrypt(data);
     } catch {
       return null; // encrypted by another Windows user or PC
     }
@@ -93,6 +98,12 @@ export class KeyStore {
     const fp = slot.mode === "public" ? (slot.fp as string) : "-";
     await fsp.writeFile(tmp, this.crypto.encrypt(`${FORMAT}\n${fp}\n${key}`));
     await fsp.rename(tmp, target);
+    if (this.recoveryDir) try {
+      await fsp.mkdir(this.recoveryDir, { recursive: true });
+      const backup = path.join(this.recoveryDir, `${serverId(slot.host, slot.port, slot.mode)}.txt`);
+      await fsp.writeFile(`${backup}.tmp`, `${FORMAT}\n${fp}\n${key}`, { mode: 0o600 });
+      await fsp.rename(`${backup}.tmp`, backup);
+    } catch { log.warn("Automatic Documents account backup could not be written"); }
   }
 
   // The key for this slot, or null. A public server's key is returned only for the exact
@@ -102,6 +113,10 @@ export class KeyStore {
     if (!stored) return null;
     if (slot.mode === "public" && (slot.fp === null || stored.fp !== slot.fp)) return null;
     addSecret(stored.key);
+    if (this.recoveryDir) {
+      const backup = path.join(this.recoveryDir, `${serverId(slot.host, slot.port, slot.mode)}.txt`);
+      await fsp.access(backup).catch(() => this.save(slot, stored.key)).catch(() => log.warn("Automatic Documents account backup unavailable"));
+    }
     return stored.key;
   }
 
@@ -125,6 +140,7 @@ export class KeyStore {
     const stored = await this.read(slot).catch(() => null);
     if (stored) removeSecret(stored.key);
     await fsp.unlink(this.file(slot)).catch(() => undefined);
+    if (this.recoveryDir) await fsp.unlink(path.join(this.recoveryDir, `${serverId(slot.host, slot.port, slot.mode)}.txt`)).catch(() => undefined);
   }
 }
 

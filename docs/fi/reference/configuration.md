@@ -132,7 +132,7 @@ vielä todistamattomia, riskialttiita tai vain kehitystä varten, ovat pois pä�
 | `SLAYER_LINKS` | metagame | päällä | `0` | Slayer Links. `0` palauttaa 404-vastauksen, jonka jokainen `/slayerlink`-reitti sai ennen; tallennetut kutsut ja linkit säilyvät. |
 | `BALANCE_FROM_INVENTORY` | metagame | päällä | `0` | `/balance` ja `/reconcile` kertovat valuutat, jotka hahmolla on. `0` palauttaa kiinteän taulukon (Notes tietokannasta, muut 0). |
 | `PROGRESSION_REPLAY_WINDOW_S` | metagame | `5` (sekuntia) | `0` | Pelipalvelimen myöntöön, joka toistuu tavu tavulta alle 5 sekunnin kuluttua, vastataan, mutta sitä ei lisätä uudelleen. |
-| `PERSISTENT_WORLD_LIVENESS` | deploy-palvelin | päällä | `0` (vain vahtikoira käynnistää Ramsgaten ja Dojon uudelleen, kuten ennen) | Kaatunut Ramsgate tai Dojo käynnistetään uudelleen, kun pelaaja matkustaa sinne. |
+| `PERSISTENT_WORLD_LIVENESS` | deploy-palvelin | päällä | `0` (vahtikoira käynnistää Ramsgaten; Dojo käynnistyy tarvittaessa) | Kaatunut Ramsgate tai Dojo käynnistetään uudelleen, kun pelaaja matkustaa sinne. |
 | `GATEWAY_ALLOWLIST` | yhdyskäytävä | päällä | `0` | Hätäkatkaisin: kun se on pois päältä, kenenkään peliportit eivät aukea. |
 | `ENABLE_DOJO` | deploy-palvelin | Dojo käynnistyy ensimmäisellä käyttökerralla | `1` käynnistää sen heti alussa, kuten alkuperäinen projekti | Säästää yhden peliprosessin silloin, kun kukaan ei harjoittele. |
 
@@ -225,6 +225,7 @@ ennen kuin tietokanta avataan.
 |:-----|:-------|:------|:--------------|:-------------|
 | `MATCHMAKING_MODE` | ei oletusta. Puuttuu tai tuntematon: jokainen matchmaking-pyyntö torjutaan (400). | `DEPLOYSERVER` tai `DISABLED` (tarkalleen) | `DEPLOYSERVER`: pelipalvelimet tulevat deploy-palvelimelta. `DISABLED`: kaikki matchmaking torjutaan. | Sinä; paketti: aina `DEPLOYSERVER` |
 | `DEPLOYSERVER_URL` | ei oletusta. Puuttuu: jokainen pelipalvelimen käynnistys epäonnistuu, eikä palvelimen tilassa näy maailmoja. | `host:port` ilman `http://`-alkua | Missä deploy-palvelin kuuntelee; metagame lisää `http://`-alun ja polun. Pidä se osoitteessa `127.0.0.1`: deploy-palvelimessa ei ole tunnistautumista, ja se torjuu kaikki muut kutsujat. | Sinä (`127.0.0.1:61001`); paketti: aina `127.0.0.1:<deploy-palvelimen portti>` |
+| `MATCHMAKING_DEPLOY_TIMEOUT_MS` | `240000` (4 minuuttia) | kokonaisluku millisekunteina, 1000-900000; virheellinen arvo tuottaa varoituksen ja käyttää oletusta | Rajoittaa koko pelipalvelimen varauspyynnön kestoa, myös kesken jäävää JSON-vastausta. Aikakatkaisu päättää ehdokkaan tilaan `FAILED`, eikä käynnistä automaattisesti toista palvelinta. Pelaajan uusi liittymispyyntö voi yrittää uudelleen. Varaa aikaa työntekijän käynnistymiselle ja asetetulle käynnistysvälille. | Valinnainen; paketti säilyttää |
 | `QOS_TARGET_URL` | ei oletusta. Puuttuu: alueluettelossa, jota peliohjelma pingaa, on vain `null` (mitä peliohjelma silloin tekee, on testaamatta). | täysi URL, joka päättyy `/QoS` | Se yksi ”alue”, jota peliohjelma pingaa ennen matchmakingia; metagame vastaa itse `GET /QoS`-pyyntöön. Yksi kone: `http://127.0.0.1:61000/QoS`. Yksityinen tila: sama Tailscale-osoitteella. Julkinen tila: `http://127.0.0.1:61000/QoS`, joka on jokaisen kaverin oma käynnistimen välitin. | Sinä; paketti: aina (julkinen: `http://127.0.0.1:61000/QoS`; yksityinen: `http://<Tailscale-osoite>:<metagamen portti>/QoS`) |
 | `TARGET_CHANGELIST` | ei oletusta. Puuttuu: koontiversion tunnisteeksi tulee `undefined_1.4.4_shipping`. | `239827` | Lähetetään peliohjelmalle koontiversion tunnisteena `<changelist>_1.4.4_shipping` siinä vastauksessa, joka ohjaa sen pelipalvelimelle. Ei tiedetä, tarkistaako 1.4.4-peliohjelma sitä; pidä arvona `239827`, `Version.txt`-tiedoston muutoslistan numero. | Sinä; paketti: aina `239827` |
 
@@ -311,6 +312,8 @@ sivulla [Pelin kauppa]({{ '/fi/findings/store.html' | relative_url }}).
 | `SAVE_HISTORY_DAILY` | `30` (myös kun arvo on tyhjä, negatiivinen tai ei ole kokonaisluku) | päivien määrä kokonaislukuna, 0 tai enemmän (0 ottaa tämän portaan pois käytöstä) | Ja kunkin päivän viimeinen versio näin monta päivää. Oletusarvoilla tämä tekee enintään noin 3,5 Mt hahmoa kohden. | Oletuksena ei kukaan |
 | `INVENTORY_REFUSE_OVERSPEND` | pois | `1` tai mikä tahansa muu | `1` torjuu (409) tavarapyynnön, joka poistaa enemmän kuin pelaajalla on. Pois päältä, koska torjunta hylkää koko pyynnön palkintoineen. Kun asetus on pois, ylitys pysäytetään nollaan ja kirjataan lokiin. | Oletuksena ei kukaan; paketti: säilyttää |
 | `INVENTORY_REPORT_REMOVALS` | päällä | `0` tai mikä tahansa muu | **Vain forkissa.** Tavaravastaukset luettelevat jokaisen tavarapinon, jota pyyntö muutti, lopullisine määrineen (0, jos pino käytettiin loppuun), joten pelipalvelin näkee, mitä kului. `0` palauttaa alkuperäisen projektin vastauksen, jossa oli vain lisäykset ja jonka takia varusteiden parantaminen ei maksanut mitään. | Oletuksena ei kukaan |
+| `PATROL_BONUS_DAILY` | `10` (myös kun arvo on tyhjä tai ei ole kokonaisluku, joka on vähintään 1) | kokonaisluku, 1 tai enemmän | **Vain forkissa.** Päivittäinen partiobonuksen täydennys (pelin oma on 6) nostaa `TOKEN_DAILY_PATROL_BONUS`-pinon näin suureksi. | Oletuksena ei kukaan |
+| `BOUNTY_TOKENS_DAILY` | `6` (myös kun arvo on tyhjä tai ei ole kokonaisluku, joka on vähintään 1) | kokonaisluku, 1 tai enemmän | **Vain forkissa.** Palkkiopoletit, jotka pelaaja saa aluksi ja joka päivä; jako nostaa `TOKEN_BOUNTY_DRAFT`-pinon näin suureksi. Olemassa olevat hahmot asetetaan molempiin määriin kerran, tämän version ensimmäisellä käynnistyksellä. | Oletuksena ei kukaan |
 
 ### Kaverit, ryhmät ja killat {#metagame-social}
 
@@ -425,12 +428,12 @@ ympäristön, pelipalvelinavain mukaan lukien.
 | `BIND_HOST` | `127.0.0.1` (myös tyhjänä) | yksi IP-osoite | **Vain forkissa.** Kuunteluosoite. Pidä `127.0.0.1`: tunnistautumista ei ole, ja kuka tahansa porttiin yltävä voi käynnistää peliprosesseja. Lisäksi sen molemmat reitit torjuvat jokaisen kutsujan, joka ei tule loopbackista tai joka tuli välityspalvelimen kautta. | Sinä; paketti: aina `127.0.0.1` |
 | `MY_IP` | ei oletusta. Puuttuu: jokainen käynnistys epäonnistuu. | IPv4-osoite sellaisena kuin pelaajat sen tavoittavat | Osoite, joka annetaan peliohjelmille jokaista pelipalvelinta varten (Ramsgate, Dojo, metsästykset). `127.0.0.1` yhden koneen peliin, Tailscale-osoite yksityisessä tilassa, palvelimen julkinen IPv4 julkisessa tilassa (esimerkiksi `203.0.113.10`). Jos jaetulla palvelimella on `127.0.0.1`, kaverin peli ottaa yhteyden omaan koneeseensa. | Sinä; paketti: aina (julkisessa tilassa julkisen osoitteen IPv4: `-PublicHost`, muuten edellisellä asennuskerralla tallennettu osoite, muuten verkkosovittimen ainoa julkinen IPv4; yksityisessä tilassa Tailscale-osoite; hiekkalaatikkotilassa `127.0.0.1`) |
 | `PORT_RANGE_BEGIN` | ei oletusta. Puuttuu: metsästysportteja ei ole, ja jokainen metsästys epäonnistuu. | UDP-portti | Pelipalvelinten alin portti. Metsästykset käyttävät portteja `PORT_RANGE_BEGIN`:stä `PORT_RANGE_END - 2`:een: kuusi kerrallaan välillä 8770-8777. Jos haluat itse kootulla koneella useampia yhtä aikaa, pienennä arvoa ja avaa myös lisäportit. | Sinä (8770); paketti: aina 8770 |
-| `PORT_RANGE_END` | ei oletusta. Puuttuu: Ramsgate ei käynnisty. | pidä `8777` | Ramsgate pyörii aina tässä portissa ja Training Dojo sen alapuolisessa. Pidä 8777: palvelin-DLL ottaa 50 sekunnin tyhjäkäyntisulkeutumisensa pois käytöstä porteissa 8776 ja siitä ylöspäin, joten muu arvo jättää metsästyksiä, jotka eivät koskaan sulkeudu, tai Ramsgaten, joka sulkeutuu jatkuvasti. | Sinä (8777); paketti: aina 8777 |
+| `PORT_RANGE_END` | ei oletusta. Puuttuu: Ramsgate ei käynnisty. | pidä `8777` | Ramsgate pyörii aina tässä portissa ja Training Dojo sen alapuolisessa. Uudelleen käännetty DLL tunnistaa pysyvän Ramsgaten kartasta. Vanha mukana tuleva DLL poistaa vahtikoiran käytöstä portin perusteella, joten sen kanssa portit on pidettävä ennallaan. | Sinä (8777); paketti: aina 8777 |
 | `GAMESERVER_BINARY_PATH` | ei oletusta. Puuttuu tai väärä: deploy-palvelin pysähtyy pian käynnistyksen jälkeen (päätelty koodista). | `Dauntless-Win64-Shipping.exe`-tiedoston koko polku kauttaviivoin | 1.4.4:n exe-tiedosto, joka käynnistetään jokaiseksi pelipalvelimeksi; `dxgi.dll` ja `UndauntedInternalServer.dll` on oltava sen vieressä. Mikä tahansa tiedosto tässä nimetäänkin, se ajetaan pelipalvelinavain komentorivillään, joten vain ylläpitäjät saavat muokata asetustiedostoa. | Sinä; paketti: aina (`<root>/game/Dauntless/Archon/Binaries/Win64/Dauntless-Win64-Shipping.exe`) |
 | `METAGAME_API_KEY` | ei oletusta. Puuttuu: pelipalvelimet eivät voi puhua metagamelle. | pelipalvelinavain (luotuna 48 heksamerkkiä) | **Salainen: älä koskaan jaa, älä koskaan tallenna versionhallintaan.** Annetaan jokaiselle pelipalvelimelle sen ensimmäisenä komentoriviparametrina; palvelin-DLL lähettää sen jokaisen metagamelle menevän pyynnön mukana, ja metagame tallentaa siitä vain SHA-256-tiivisteen. Sen on vastattava `gameserver.key`-tiedostoa ja oltava rekisteröity metagamen tietokantaan. Koneen paikalliset käyttäjät näkevät sen pelipalvelinten komentoriveiltä. | Sinä ([Pystytä palvelin]({{ host_page.url | relative_url }}#metagame)); paketti: aina (otetaan varmuuskopiosta, avaintiedostosta tai vanhasta tiedostosta, muuten luodaan uusi) |
 | `SECONDS_TO_WAIT_BETWEEN_GAMESERVER_STARTUP` | ei oletusta. Puuttuu: käytännössä ei taukoa. | sekunteja; desimaalit toimivat | Pienin tauko kahden pelipalvelimen käynnistyksen välillä. Kaikki käynnistykset odottavat samassa jonossa, joten kolmas samalla hetkellä pyydetty metsästys käynnistyy noin kaksi taukoa myöhemmin. | Sinä (10); paketti: 10, kun arvo puuttuu tai on tyhjä, käsin asetettu arvo säilytetään |
-| `ENABLE_DOJO` | tarvittaessa | `1` tai mikä tahansa muu | **Vain forkissa.** `1` käynnistää Training Dojon heti alussa, kuten alkuperäinen projekti. Mikä tahansa muu: Dojo käynnistyy ensimmäisellä kerralla, kun joku ohjataan sinne matchmakingissa, ja siitä eteenpäin vahtikoira (watchdog) käynnistää sen uudelleen. | Sinä (0); paketti: 0, kun arvo puuttuu, muuten säilytetään |
-| `PERSISTENT_WORLD_LIVENESS` | päällä | `0`, tai mikä tahansa muu päälle | **Vain forkissa.** Päällä: ennen kuin Ramsgate tai Dojo annetaan pelaajalle, deploy-palvelin tarkistaa, että sen prosessi on elossa, ja käynnistää kaatuneen ensin saman yhden käynnistyksen kautta, jota palvelimen käynnistys ja vahtikoira käyttävät (portissa 8777 ei koskaan kahta prosessia). Käynnistysrivi kertoo `Ramsgate and Dojo liveness check before handing them out: on`. `0`: ne annetaan tarkistamatta, ja vain vahtikoira käynnistää ne uudelleen minuutin sisällä, kuten ennen. | Oletuksena ei kukaan; paketti: säilyttää |
+| `ENABLE_DOJO` | tarvittaessa | `1` tai mikä tahansa muu | **Vain forkissa.** `1` käynnistää Training Dojon heti alussa, kuten alkuperäinen projekti. Mikä tahansa muu: Dojo käynnistyy ensimmäisellä kerralla, kun joku ohjataan sinne matchmakingissa, ja sulkeutumisen jälkeen se käynnistyy seuraavasta pyynnöstä. | Sinä (0); paketti: 0, kun arvo puuttuu, muuten säilytetään |
+| `PERSISTENT_WORLD_LIVENESS` | päällä | `0`, tai mikä tahansa muu päälle | **Vain forkissa.** Päällä: ennen kuin Ramsgate tai Dojo annetaan pelaajalle, deploy-palvelin tarkistaa, että sen prosessi on elossa, ja käynnistää kaatuneen ensin saman yhden käynnistyksen kautta, jota palvelimen käynnistys ja vahtikoira käyttävät (portissa 8777 ei koskaan kahta prosessia). Käynnistysrivi kertoo `Ramsgate and Dojo liveness check before handing them out: on`. `0`: olemassa olevat tietueet annetaan tarkistamatta; vahtikoira käynnistää Ramsgaten minuutin sisällä ja poistaa kuolleen Dojon tietueen seuraavaa pyyntöä varten. | Oletuksena ei kukaan; paketti: säilyttää |
 | `LOG_LEVEL` | `info` (myös tyhjänä) | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` | Lokitaso. `info`-tasolla matchmaking-rivi luettelee odotettujen pelaajien tilitunnukset; avainta ei koskaan kirjata. | Oletuksena ei kukaan; paketti: säilyttää |
 | `NODE_ENV` | puuttuu: värilliset, luettavat lokit | `production` tai mikä tahansa muu | `production`: JSON-lokirivit, eikä virhesivuilla ole pinojälkiä. | Sinä; paketti: aina `production` |
 
@@ -708,3 +711,39 @@ Vain automaattiset testit lukevat näitä. Testien ajamisesta kerrotaan sivulla
   `HUNT_PASS_PREMIUM_MODE`, `XMPP_PORT` sekä deploy-palvelimessa `ENABLE_WATCHDOG`, `HOST`,
   `GAMESERVER_LOG_DIR`, `GAMESERVER_LOG_CMDS` ja `METAGAME_ADDRESS`; hänen DLL:ssään
   `UNDAUNTED_DIAG_LOG`. Mikään täällä ei lue niitä.
+
+
+Julkisen metsästysjonon ryhmittely kestää enintään 5 sekuntia ensimmäisestä liittymisestä
+(tila tarkistetaan asiakkaan kyselyllä). Uudelleen käännetty palvelin-DLL sulkee metsästykset,
+opetusjaksot ja Dojon, kun niissä ei ole odottavaa tai avointa verkkoyhteyttä 30 sekuntiin.
+Ennen ensimmäistä yhteyttä lataamiselle annetaan 180 sekuntia. Aika mitataan monotonisella
+kellolla. Ramsgate pysyy käynnissä; Dojo käynnistyy seuraavasta pyynnöstä. Muutos vaatii DLL:n
+kääntämisen ja asentamisen: lähdekoodin muokkaus ei päivitä käynnistimen mukana tulevaa DLL:ää.
+
+### Ramsgate-instanssit ja automaattinen aluevalinta
+
+Deploy-palvelimen oletus on `RAMSGATE_POOL=1`. Tyhjä Ramsgate ei käynnisty asennuksen tai
+palvelimen käynnistyksen yhteydessä. CITY-pyyntö varaa koko matkustavalle ryhmälle paikat
+instanssista, jonka kapasiteetti on 20. Tarvittaessa käynnistyy uusi instanssi. Ensimmäinen
+käyttää `PORT_RANGE_END`-porttia; muut jakavat metsästysportit. Dojon portti pysyy varattuna.
+Muisti- ja porttirajat koskevat uusia instansseja. Uusi kaupunki odottaa ensimmäistä yhteyttä
+180 sekuntia. Sen jälkeen viimeisen odottavan tai avoimen yhteyden poistuminen sulkee sen
+seuraavalla pelitickillä. Se ei käynnisty uudelleen ilman pyyntöä. `RAMSGATE_POOL=0` palauttaa
+vanhan pysyvän kaupungin. Poolissa vanha `CITY_OVERFLOW`-tasain ohitetaan; alueellinen reititys
+valitsee edelleen työntekijän, jolla on oma kaupunkipooli.
+
+Käynnistimen oletus on Automatic (closest region), ellei pelaajalla ole tallennettua käsin
+valittua aluetta. Play mittaa saatavilla olevien alueiden TCP-yhteyden muodostuksen kahdesti
+ja vertaa toista mittausta. Tämä arvioi verkkoviivettä, ei maantieteellistä etäisyyttä tai
+pelin UDP-viivettä. EU, Australia ja Saksa ovat edelleen valittavissa käsin; ryhmä seuraa
+johtajaa. Automaattinen valinta arvioidaan uudelleen jokaisella Play-painalluksella.
+
+Metagamen `REGION_MAIN_PROBE_HOST`, `REGION_AUS_PROBE_HOST` ja `REGION_GER_PROBE_HOST`
+määrittävät alueiden saavutettavat TCP-kuuntelijat. `REGION_*_PROBE_PORT` on oletuksena 443.
+Main käyttää ilman asetusta kutsun osoitetta ja porttia. Australia ja Saksa näytetään vain,
+kun `AUS_REGION=1` ja `GERMANY_REGION=1`. Mittaus ei lähetä tunnuksia tai sovellusdataa.
+Epäonnistuneet mittaukset ohitetaan; jos kaikki epäonnistuvat, nykyinen backend-alue säilyy.
+GET `/undaunted/api/HuntRegion` palauttaa lisäksi `probes: [{region, host, port}]`.
+
+Toiminta vaatii uudelleen käännetyn palvelin-DLL:n ja päivitetyn käynnistimen asentamisen.
+Lähdekoodin muutos ei vaihda asennuspaketin mukana tulevia binäärejä.

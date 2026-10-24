@@ -1,3 +1,4 @@
+import {KeyRevocations} from '../controllers/keyrotation';
 import crypto from "node:crypto";
 import { createServer, IncomingMessage, Server as HttpServer } from "node:http";
 import type { Duplex } from "node:stream";
@@ -47,7 +48,8 @@ import {
 
 const FRAME_LIMIT = 32768;
 export const BODY_LIMIT = 2048;
-const MAX_SOCKETS = 64;
+// Shared by every region; leave headroom beyond the realm's 100+ concurrent players.
+const MAX_SOCKETS = 512;
 // Connections that have not bound yet (not logged in, or logged in and not bound), per address
 const MAX_UNBOUND_PER_ADDRESS = 8;
 const MAX_FRAMES_BEFORE_LOGIN = 4;
@@ -172,11 +174,13 @@ export class ChatServer {
     private readonly friendPresence?: FriendPresence;
     private readonly stopFriendshipListener?: () => void;
     private readonly ticker?: NodeJS.Timeout;
+    private readonly revokeKey=(uid:string)=>{for(const session of this.clients)if(session.Uid===uid)this.end(session,'replaced');};
     private nextId = 1;
     private nextPing = 1;
     private lastSweep = 0;
 
     constructor(Options: ChatOptions = {}) {
+        KeyRevocations.on("revoke",this.revokeKey);
         this.clock = Options.Clock ?? (() => Date.now());
         this.trace = Options.Trace === true;
         this.nickCheck = Options.NickCheck ?? "enforce";
@@ -244,6 +248,7 @@ export class ChatServer {
 
     // Shutdown: <close/> to every session, then whatever is still open is cut after 1 s
     async close(): Promise<void> {
+        KeyRevocations.off("revoke",this.revokeKey);
         if(this.ticker !== undefined){
             clearInterval(this.ticker);
         }

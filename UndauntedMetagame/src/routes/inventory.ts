@@ -1,7 +1,9 @@
 import { Router } from "express";
+import { PlayerMutationRateLimit } from "../middleware/RateLimits";
 import { HasUndauntedMetagameAuth } from "../middleware/HasUndauntedMetagameAuth";
 import { logger } from "../logger";
 import { GetInventoryForUserIdAndCharacterId, InventoryError, RunInventoryTransaction, UpdateInstancedItem } from "../controllers/inventory";
+import { EnforceKnownUnlockerMutation } from "../controllers/unlocker-detection";
 
 export const inventoryRouter = Router();
 
@@ -52,7 +54,18 @@ inventoryRouter.get("/inventory/:userId/:characterId", HasUndauntedMetagameAuth,
     }
 });
 
-inventoryRouter.post("/inventory", HasUndauntedMetagameAuth, async (req: any, res) => {
+inventoryRouter.post("/inventory", HasUndauntedMetagameAuth, PlayerMutationRateLimit, async (req: any, res) => {
+    try {
+        const detection = EnforceKnownUnlockerMutation(req.AuthData, req.body);
+        if (detection.blocked) {
+            res.status(403).json({error: detection.suspended ? "account_banned" : "forbidden"});
+            return;
+        }
+    } catch {
+        logger.error("Unlocker enforcement failed; inventory mutation refused");
+        res.status(503).json({error: "inventory_unavailable"});
+        return;
+    }
     const UserId = req.AuthData.IsGameserver ? req.body.accountId : req.AuthData.userId;
     const CharacterId = req.body.characterId;
     const TransactionId = req.body.transactionId;
@@ -89,7 +102,7 @@ inventoryRouter.post("/inventory", HasUndauntedMetagameAuth, async (req: any, re
     }
 });
 
-inventoryRouter.post("/inventory/instanceditem", HasUndauntedMetagameAuth, async (req: any, res) => {
+inventoryRouter.post("/inventory/instanceditem", HasUndauntedMetagameAuth, PlayerMutationRateLimit, async (req: any, res) => {
     const CharacterId = req.body.characterId;
     const UserId = req.AuthData.IsGameserver ? req.body.accountId : req.AuthData.userId;
     const InstanceId = req.body.instanceId;

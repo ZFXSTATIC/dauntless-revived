@@ -4,6 +4,17 @@ import { checkUsername, extractAccountKey, isPlausibleAccountKey } from "../src/
 import { limitedView, parseServerStatus, sortInstances } from "../src/shared/status";
 import { parseBranding, parseNews, sniffImage } from "../src/main/hostapi";
 import { BELL, RLO } from "../src/shared/text";
+import { sanitizeSettings } from "../src/main/settings";
+
+test("cached authenticated names preserve Unicode without relaxing registration rules", () => {
+  const slot = "a".repeat(24);
+  const saved = { usernames: { [slot]: "MiauStyleZzツ" } };
+  assert.equal(sanitizeSettings(saved, "en").usernames[slot], "MiauStyleZzツ");
+  assert.equal(checkUsername("MiauStyleZzツ"), "bad_chars");
+  for (const name of ["", "x".repeat(33), `Miau${BELL}`, `Miau${RLO}`, 123]) {
+    assert.equal(sanitizeSettings({ usernames: { [slot]: name } }, "en").usernames[slot], undefined);
+  }
+});
 
 test("username rules (roadmap 1.6)", () => {
   assert.equal(checkUsername("Slayer_01"), "ok");
@@ -170,4 +181,11 @@ test("news and branding parsing", () => {
   assert.equal(parseBranding({ accent: "red; background:url(x)" }).accent, null);
   assert.equal(sniffImage(Buffer.from([0xff, 0xd8, 0xff, 0xe0])), "image/jpeg");
   assert.equal(sniffImage(Buffer.from("<svg onload=alert(1)>")), null);
+});
+
+test("retired OCE settings migrate to US without losing the account", () => {
+  const slot="a".repeat(24);
+  const saved=sanitizeSettings({huntRegion:"aus",usernames:{[slot]:"MiauStyleZzツ"}},"en");
+  assert.equal(saved.huntRegion,"us");
+  assert.equal(saved.usernames[slot],"MiauStyleZzツ");
 });

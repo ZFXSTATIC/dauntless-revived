@@ -1,7 +1,54 @@
 import os from 'node:os';
+import { existsSync } from 'node:fs';
 
 export class CapacityUnavailable extends Error {
-    constructor(public readonly reason: 'memory' | 'ports') { super(`Game-server capacity unavailable: ${reason}`); }
+    constructor(public readonly reason: 'memory' | 'ports' | 'hunts' | 'cpu') { super(`Game-server capacity unavailable: ${reason}`); }
+}
+
+export function HuntLimit() {
+    const name = process.env.HUNT_WORKER === '1' ? 'MAX_HUNTS' : 'MAX_LOCAL_HUNTS';
+    if (process.env[name] === 'auto') {
+        if (process.env.GAMESERVER_CPU_GUARD !== '1' || process.env.GAMESERVER_MEMORY_GUARD === '0')
+            throw new Error('Automatic hunt capacity requires CPU and memory guards');
+        const first = setting('PORT_RANGE_BEGIN', 1), last = setting('PORT_RANGE_END', 1);
+        if (last > 65535 || last - first < 2) throw new Error('Invalid automatic hunt port range');
+        // Two ports remain reserved for Ramsgate and Training. CPU and RAM admission
+        // decide how many of the remaining ports can actually run at any moment.
+        return last - first - 1;
+    }
+    return process.env[name] === undefined ? null : setting(name, 1);
+}
+
+// Launches start one at a time, SECONDS_TO_WAIT_BETWEEN_GAMESERVER_STARTUP apart, and the coordinator gives up
+// on a launch after 120 seconds. Half of that is the budget for the line, so the last one in line still starts in time
+const PENDING_BUDGET_SECONDS = 60;
+
+// While this file exists no new hunt is admitted; running ones finish normally. Create it to drain a host
+// before a restart, delete it to resume. Checked on every request, so no restart is needed to toggle it.
+export function HuntsDraining() {
+    return existsSync(process.env.DRAIN_FILE || 'drain.flag');
+}
+
+export function PendingHuntLimit() {
+    const wanted = process.env.MAX_PENDING_HUNTS === undefined ? 8 : setting('MAX_PENDING_HUNTS', 8);
+    const pacing = Math.max(1, Number(process.env.SECONDS_TO_WAIT_BETWEEN_GAMESERVER_STARTUP) || 1);
+    return Math.max(1, Math.min(wanted, Math.floor(PENDING_BUDGET_SECONDS / pacing)));
+}
+
+export class HuntAdmission {
+    pending = 0;
+    constructor(private running: () => number, private limit = HuntLimit) {}
+    status() { return {running: this.running(), pending: this.pending, limit: this.limit()}; }
+    reserve() {
+        const {running, pending, limit} = this.status();
+        // Keep paced launches within the caller's request timeout instead of spawning abandoned hunts.
+        if (HuntsDraining()) throw new CapacityUnavailable('hunts');
+        if (pending >= PendingHuntLimit()) throw new CapacityUnavailable('hunts');
+        if (limit !== null && running + pending >= limit) throw new CapacityUnavailable('hunts');
+        this.pending++;
+        let active = true;
+        return () => { if (active) {active = false; this.pending--;} };
+    }
 }
 
 function setting(name: string, fallback: number) {

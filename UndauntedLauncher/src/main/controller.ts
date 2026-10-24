@@ -1,3 +1,6 @@
+import {collectDeviceSignals} from './device-signals';
+import {checkDeviceSignals} from './hostapi';
+import {chooseClosestRegion} from './autoregion';
 // The launcher's state machine. It owns every piece of state; the renderer draws Snapshots and
 // sends intents. Nothing in here imports Electron: main.ts passes the platform pieces in, which
 // keeps this testable with plain Node.
@@ -12,10 +15,13 @@ import { createHash } from "node:crypto";
 import { promises as fsp, existsSync } from "node:fs";
 import path from "node:path";
 import { missingDirectX, gameExitDetail } from './windows-runtime';
+import { hasOfflineMemory, OFFLINE_REQUIRED_AVAILABLE_MIB } from "./offline-memory";
+import { OFFLINE_KEY_SLOT, type OfflineSaveRuntime } from "./offline-save";
 
-import { parseInvite, isLoopbackHost, type Invite } from "../shared/invite";
+import { extractInviteCode, findInviteLink, parseInvite, isLoopbackHost, type Invite } from "../shared/invite";
 import { checkUsername, extractAccountKey } from "../shared/username";
 import { limitedView, type ServerStatus } from "../shared/status";
+import { saveHuntRegion, endPlaying } from './hostapi';
 import type {
   ActionResult,
   Branding,
@@ -23,6 +29,7 @@ import type {
   ErrorCode,
   ExposureMode,
   ExternalTarget,
+  GameLanguage,
   GraphicsPreset,
   InviteCheck,
   Language,
@@ -34,8 +41,9 @@ import type {
   Settings,
   Snapshot,
   TaskProgress,
+  OfflineStatus,
 } from "../shared/types";
-import { EXPOSURE_MODES, GRAPHICS_PRESETS } from "../shared/types";
+import { EXPOSURE_MODES, GAME_LANGUAGES, GRAPHICS_PRESETS, LANGUAGES } from "../shared/types";
 import type { Endpoint } from "./http";
 import {
   fetchBrandingImage,
@@ -49,12 +57,14 @@ import {
   type StatusResult,
 } from "./hostapi";
 import { compareManifests, resolveInside, type GameManifest, type ManifestFile } from "./manifest";
-import { DownloadError, DownloadJob } from "./downloader";
+import { contentDownloadBase, DownloadError, DownloadJob } from "./downloader";
 import { AbortedError, hashFile, removePartFiles, verifyInstall, VerifiedCache } from "./verify";
 import { dllStatus, installPinnedDlls, DllError, win64Dir } from "./dlls";
+import { installClientMods } from "./client-mods";
 import { applyGameConfig } from "./engineini";
 import { locateExistingGame } from "./game-folder";
-import { buildLaunchArgs, describeLaunch, GameProcess, type LaunchRuntime, type SpawnFn } from "./launch";
+import { buildLaunchArgs, describeLaunch, GameProcess, gameLocale, type LaunchRuntime, type SpawnFn } from "./launch";
+import { createRelayOwnerCheck } from "./relay-owner";
 import { backupFileText, KeyStore, KeyStoreError, serverId, type Encryptor, type KeySlot } from "./keystore";
 import { SettingsStore, type StoredServer, type StoredSettings } from "./settings";
 import { freeBytes, missingVcRuntime } from "./system";
@@ -72,15 +82,24 @@ import {
 } from "./constants";
 
 export interface Platform {
+  collectDeviceSignals?: () => Promise<import('./device-signals').DeviceSignals>;
   userDataDir: string;
+  documentsDir?: string;
   resourcesDir: string;
   runtimeFilesExist?: (file: string) => boolean;
+  offlineFreeMemory?(): number;
+  offlineSave?: OfflineSaveRuntime;
 
   defaultInstallDir: string;
+  // The project's main server, adopted at init when no server is stored yet (production sets it;
+  // tests leave it unset). See DEFAULT_SERVER in settings.ts.
+  defaultServer?: StoredServer;
   hostPlatform?: NodeJS.Platform;
   appVersion: string;
   packaged: boolean;
   defaultLanguage: Language;
+  // The operating system's locale ("es-ES"), for the game language "auto".
+  systemLocale?: string;
   encryptor: Encryptor;
   manifest: GameManifest | null;
   gameConfigDir?: string;
@@ -96,11 +115,20 @@ export interface Platform {
   openPath(dir: string): Promise<void>;
   emitSnapshot(s: Snapshot): void;
   emitProgress(p: TaskProgress): void;
+  emitOfflineStatus(s: OfflineStatus): void;
   findTailscale(): string | null;
   findRunningClients(): Promise<number[]>;
   prepareGameLaunch?(): Promise<{ runtime: LaunchRuntime; configDir: string; runtimeName: string } | null>;
+
+// Starts the launcher-owned local services without exposing their Electron implementation here.
+  startOfflineStack?(onPhase: (phase: "starting-metagame" | "starting-deploy") => void,): Promise<OfflineStackSession | null>;
   spawn?: SpawnFn;
   installUpdate?(): void;
+}
+
+export interface OfflineStackSession {
+  endpoint: Endpoint;
+  stop(): Promise<void>;
 }
 
 interface InstallInfo {
@@ -109,6 +137,17 @@ interface InstallInfo {
   partFiles: number;
   dllsOk: boolean;
 }
+
+type OfflineReadyAccount = { kind: "ready"; key: string; username: string };
+
+type OfflineAccountResult =
+    | OfflineReadyAccount
+    | { kind: "register" }
+    | { kind: "error"; error: LauncherError };
+
+type OfflineRegistrationResult =
+    | OfflineReadyAccount
+    | { kind: "error"; error: LauncherError };
 
 const err = (code: ErrorCode, detail?: string): { ok: false; error: LauncherError } => ({ ok: false, error: detail ? { code, detail } : { code } });
 const OK: ActionResult = { ok: true };
@@ -120,7 +159,15 @@ export function endpointFor(sv: StoredServer): Endpoint {
 export class Controller {
   private readonly settings: SettingsStore;
   private readonly keys: KeyStore;
+  private readonly offlineKeys: KeyStore;
   private readonly game: GameProcess;
+  private endPlayingSession: (()=>Promise<void>) | null = null;
+  private offlineSession: OfflineStackSession | null = null;
+  private offlineStarting = false;
+  private offlineCancelRequested = false;
+  private offlineStartTask: Promise<ActionResult> | null = null;
+  private saveTask: Promise<ActionResult> | null = null;
+  private shuttingDown = false;
   private readonly verified: VerifiedCache;
 
   private reachable: boolean | null = null;
@@ -155,15 +202,20 @@ export class Controller {
   private art = new Map<string, { file: string; type: string }>();
   private relay: Relay | null = null;
   private phase: Phase = "loading";
+  private offline: OfflineStatus = { phase: "stopped" };
 
   constructor(private readonly p: Platform) {
     this.settings = new SettingsStore(p.userDataDir, p.defaultLanguage, p.hostPlatform ?? process.platform);
-    this.keys = new KeyStore(path.join(p.userDataDir, "keys"), p.encryptor);
+    this.keys = new KeyStore(path.join(p.userDataDir, "keys"), p.encryptor, p.documentsDir ? path.join(p.documentsDir, "Dauntless Revived", "Account Keys") : undefined);
+    // Local identity stays in userData; online account recovery in Documents is unchanged.
+    this.offlineKeys = new KeyStore(path.join(p.userDataDir, "keys"), p.encryptor);
     this.game = new GameProcess(p.spawn);
     this.verified = new VerifiedCache(path.join(p.userDataDir, "verified-files.json"));
     this.game.onChange((running, code) => {
       log.info(running ? "game started" : `game exited (code ${code ?? "none"})`);
       if (!running) {
+        const end=this.endPlayingSession; this.endPlayingSession=null;
+        if(end) void end().catch(()=>{});
         if (code !== null && code !== 0) this.lastError = {code:'launch_failed',detail:gameExitDetail(code)};
 
         void this.stopRelay().then(() => this.publish());
@@ -190,6 +242,10 @@ export class Controller {
   // True while the game runs through the local relay: closing the launcher would cut the game off.
   get relayActive(): boolean {
     return this.relay !== null && this.relay.running;
+  }
+
+  get offlineGameActive(): boolean {
+    return (this.offlineSession !== null && (this.game.running || this.offline.phase === "launching-game"));
   }
 
   get gameRunning(): boolean {
@@ -222,6 +278,13 @@ export class Controller {
   }
 
   async init(): Promise<void> {
+    // A fresh install (or a new device) has no server yet: adopt the project's main server so the
+    // player can reach it and sign in with their account key without an invite. Tests leave
+    // defaultServer unset, so their blank-start flow is unchanged.
+    if (this.p.defaultServer && !this.settings.get().server) {
+      await this.settings.update((s) => { s.server = this.p.defaultServer!; });
+    }
+    if (this.p.offlineSave) await this.withBusy(() => this.p.offlineSave!.recover());
     await this.refreshKeyFlag();
     await this.inspectInstall();
     this.publish();
@@ -249,6 +312,10 @@ export class Controller {
     return {
       phase: this.phase,
       busy: this.busy,
+      savedServers: this.s.savedServers.map((o) => {
+        const id = serverId(o.host, o.port, o.mode);
+        return { id, mode: o.mode, host: o.host, port: o.port, name: o.name, current: sid === id, username: this.s.usernames[id] ?? null };
+      }),
       server: sv
         ? {
             mode: sv.mode,
@@ -284,7 +351,7 @@ export class Controller {
       },
       task: this.task,
       game: { running: this.game.running, relayPort: this.relay?.port ?? null },
-      settings: { graphics: this.s.graphics, exposure: this.s.exposure, windowed: this.s.windowed, language: this.s.language },
+      settings: { graphics: this.s.graphics, exposure: this.s.exposure, windowed: this.s.windowed, language: this.s.language, gameLanguage: this.s.gameLanguage, streamerMode: this.s.streamerMode, showConsole: this.s.showConsole, ...(this.s.huntRegion ? {huntRegion:this.s.huntRegion} : {}) },
       app: { version: this.p.appVersion, packaged: this.p.packaged, updateReady: this.updateReady },
       status: this.status,
       statusUnsupported: this.statusUnsupported,
@@ -295,6 +362,15 @@ export class Controller {
 
   private publish(): void {
     this.p.emitSnapshot(this.snapshot());
+  }
+
+  offlineStatus(): OfflineStatus {
+    return { ...this.offline };
+  }
+
+  private setOfflineStatus(status: OfflineStatus): void {
+    this.offline = status;
+    this.p.emitOfflineStatus(status);
   }
 
   private fail(code: ErrorCode, detail?: string): { ok: false; error: LauncherError } {
@@ -344,13 +420,13 @@ export class Controller {
   // Public invites: is there a key for this host:port that belongs to another certificate? The
   // page asks before it offers to join, so that it can warn instead of offering a one-click join.
   async checkInvite(text: unknown): Promise<InviteCheck> {
-    const parsed = parseInvite(text);
+    const parsed = parseInvite(findInviteLink(text) ?? text);
     if (!parsed.ok) return err("invite_invalid_format", parsed.error);
     const change = await this.certificateChange(parsed.invite);
     return { ok: true, certificateChanged: change !== null, previousFingerprint: change?.fp ?? null };
   }
 
-  private async certificateChange(inv: Invite): Promise<{ fp: string | null } | null> {
+  private async certificateChange(inv: Pick<Invite, "mode" | "host" | "port" | "fp">): Promise<{ fp: string | null } | null> {
     if (inv.mode !== "public") return null;
     const bound = await this.keys.certificateOf({ host: inv.host, port: inv.port, mode: "public", fp: inv.fp });
     return bound && bound.fp !== inv.fp ? bound : null;
@@ -362,9 +438,31 @@ export class Controller {
   async submitInvite(text: unknown, opts: { acceptNewCertificate?: boolean } = {}): Promise<ActionResult> {
     if (this.busy || this.task) return err("busy");
     if (this.game.running) return this.fail("already_running");
-    const parsed = parseInvite(text);
+    const parsed = parseInvite(findInviteLink(text) ?? text);
     if (!parsed.ok) return this.fail("invite_invalid_format", parsed.error);
-    const inv = parsed.invite;
+    return this.join(parsed.invite, opts);
+  }
+
+  // Back to a server joined before, with what its invite said then: no invite to paste again.
+  async switchServer(id: string): Promise<ActionResult> {
+    if (this.busy || this.task) return err("busy");
+    if (this.game.running) return this.fail("already_running");
+    const saved = this.s.savedServers.find((sv) => serverId(sv.host, sv.port, sv.mode) === id);
+    if (!saved) return this.fail("invite_invalid_format");
+    return this.join({ ...saved });
+  }
+
+  async removeSavedServer(id: string): Promise<ActionResult> {
+    const cur = this.sid();
+    if (id === cur) return err("busy"); // the current server stays in the list
+    await this.settings.update((s) => {
+      s.savedServers = s.savedServers.filter((sv) => serverId(sv.host, sv.port, sv.mode) !== id);
+    });
+    this.publish();
+    return OK;
+  }
+
+  private async join(inv: Omit<Invite, "code"> & { code: string | null }, opts: { acceptNewCertificate?: boolean } = {}): Promise<ActionResult> {
     const change = await this.certificateChange(inv);
     if (change) {
       if (opts.acceptNewCertificate !== true) {
@@ -377,7 +475,6 @@ export class Controller {
     const current = this.s.server;
     const same =
       current !== null && current.mode === inv.mode && current.host === inv.host && current.port === inv.port && current.fp === inv.fp;
-    const hasKeyForIt = await this.keys.has({ host: inv.host, port: inv.port, mode: inv.mode, fp: inv.fp });
     await this.settings.update((s) => {
       s.server = {
         mode: inv.mode,
@@ -386,8 +483,10 @@ export class Controller {
         name: inv.name,
         share: inv.share,
         fp: inv.fp,
-        // A friend who already has an account on this server does not need the code again.
-        code: hasKeyForIt ? null : inv.code,
+        // Kept even when this PC holds a key for the server: that key may turn out to be refused,
+        // and the player then registers again and needs the code. It is cleared by a registration
+        // or by signing in with a key.
+        code: inv.code,
       };
     });
     if (!same) this.resetServerState();
@@ -517,6 +616,9 @@ export class Controller {
           s.usernames[sid] = info.info.username;
         });
       }
+    } else if (info.error === "account_banned") {
+      this.keyRejected = true;
+      this.lastError = {code:'account_banned',detail:info.detail};
     } else if (info.error === "key_rejected") {
       this.keyRejected = true;
       this.lastError = { code: "key_rejected" };
@@ -630,6 +732,47 @@ export class Controller {
 
   // ------------------------------------------------------------------ account
 
+  private async offlineAccount(ep: Endpoint): Promise<OfflineAccountResult> {
+    let key: string | null;
+    try {
+      key = await this.offlineKeys.load(OFFLINE_KEY_SLOT);
+    } catch (e) {
+      log.error(`could not load the offline account key: ${describeError(e)}`);
+      return { kind: "error", error: { code: "key_storage_unavailable" } };
+    }
+
+    if (!key) return { kind: "register" };
+
+    const info = await fetchUserInfo(ep, key);
+    if (info.ok) return { kind: "ready", key, username: info.info.username };
+
+    // Keep the rejected key until a replacement account has actually been created.
+    if (info.error === "key_rejected") return { kind: "register" };
+
+    return { kind: "error", error: { code: info.error, ...(info.detail ? { detail: info.detail } : {}) } };
+  }
+
+  private async registerOfflineAccount(ep: Endpoint, username: unknown,): Promise<OfflineRegistrationResult> {
+    const check = checkUsername(username);
+    if (check !== "ok") return { kind: "error", error: { code: "username_invalid", detail: check } };
+
+    const res = await registerAccount(ep, username as string, "");
+    if (!res.ok) {
+      log.warn(`offline registration refused: ${res.error}`);
+      return { kind: "error", error: { code: res.error } };
+    }
+
+    try {
+      await this.offlineKeys.save(OFFLINE_KEY_SLOT, res.key);
+    } catch (e) {
+      log.error(`could not store the offline account key: ${describeError(e)}`);
+      return { kind: "error", error: { code: "key_storage_unavailable" } };
+    }
+
+    log.info(`registered offline account as ${username as string}`);
+    return { kind: "ready", key: res.key, username: username as string };
+  }
+
   async register(username: unknown): Promise<RegisterOutcome> {
     if (this.busy || this.task) return err("busy");
     const check = checkUsername(username);
@@ -670,6 +813,23 @@ export class Controller {
     });
   }
 
+  // The Register page's invite box and the "account key" box both end up here, so an invite can
+  // never get lost: a link joins as usual, a bare code is stored for the server already chosen.
+  async setInviteCode(text: unknown): Promise<ActionResult> {
+    if (this.busy || this.task) return err("busy");
+    if (findInviteLink(text) !== null) return this.submitInvite(text);
+    const code = extractInviteCode(text);
+    if (code === null) return this.fail("invite_invalid_format", "code");
+    if (!this.s.server) return err("server_unreachable");
+    await this.settings.update((s) => {
+      if (s.server) s.server.code = code;
+    });
+    this.lastError = null;
+    log.info("an invite code was entered for the current server");
+    this.publish();
+    return OK;
+  }
+
   async useExistingKey(text: unknown): Promise<ActionResult> {
     if (this.busy || this.task) return err("busy");
     const key = typeof text === "string" ? extractAccountKey(text) : null;
@@ -701,8 +861,8 @@ export class Controller {
     if (!ep || !slot || !sid) return err("server_unreachable");
     const info = await fetchUserInfo(ep, key);
     if (!info.ok) {
-      this.lastError = { code: info.error };
-      return err(info.error);
+      this.lastError = { code: info.error, detail: info.detail };
+      return {ok:false,error:this.lastError};
     }
     try {
       await this.keys.save(slot, key);
@@ -908,6 +1068,16 @@ export class Controller {
     if (t) this.p.emitProgress(t);
   }
 
+  // UE4SS and the client mods (client-mods.ts). Never fatal: the game runs without them.
+  private async installMods(dir: string): Promise<void> {
+    try {
+      const r = await installClientMods(this.p.resourcesDir, dir);
+      if (r) log.info(`client mods: ${r.installed} installed, ${r.upToDate} up to date, ${r.kept} kept, ${r.removed} removed, ${r.disabled} switched off`);
+    } catch (e) {
+      log.warn(`client mods not installed: ${describeError(e)}`);
+    }
+  }
+
   private async runTask(mode: "install" | "repair"): Promise<ActionResult> {
     if (this.task || this.busy) return err("busy");
     if (this.game.running) return this.fail("already_running");
@@ -985,6 +1155,7 @@ export class Controller {
 
         const job = new DownloadJob({
           endpoint: cep,
+          downloadBaseUrl: contentDownloadBase(serverManifest),
           key,
           installDir: dir,
           files: needed,
@@ -1006,6 +1177,7 @@ export class Controller {
       this.setTask(blank("dlls", 2, 2));
       this.publish();
       await installPinnedDlls(this.p.resourcesDir, dir);
+      await this.installMods(dir);
       await removePartFiles(dir, manifest.files);
       await this.settings.update((s) => {
         s.verifiedDir = dir;
@@ -1057,50 +1229,263 @@ export class Controller {
 
   // ------------------------------------------------------------------ play
 
+  private async releaseOfflineSession(): Promise<void> {
+    const session = this.offlineSession;
+    this.offlineSession = null;
+
+    if (session) {
+      await session.stop();
+    }
+  }
+
+  private async finishOfflineCancellation(): Promise<ActionResult | null> {
+    if (!this.offlineCancelRequested) return null;
+
+    this.offlineCancelRequested = false;
+
+    try {
+      await this.releaseOfflineSession();
+      this.setOfflineStatus({ phase: "stopped" });
+      return OK;
+    } catch (e) {
+      log.error(`local stack could not stop after cancellation: ${describeError(e)}`);
+      const failed = this.fail("offline_unavailable");
+      this.setOfflineStatus({ phase: "error", error: failed.error });
+      return failed;
+    }
+  }
+
+  async startOffline(username?: unknown): Promise<ActionResult> {
+    if (this.busy || this.task || this.shuttingDown) return err("busy");
+    if (this.game.running) return this.fail("already_running");
+
+    const startOfflineStack = this.p.startOfflineStack;
+    if (!startOfflineStack) {
+      const failed = this.fail("offline_unavailable");
+      this.setOfflineStatus({ phase: "error", error: failed.error });
+      return failed;
+    }
+
+    this.offlineStarting = true;
+    this.offlineCancelRequested = false;
+
+    const task = this.withBusy(async () => {
+      this.setOfflineStatus({ phase: "preparing" });
+
+      try { if (!this.offlineSession) await this.p.offlineSave?.recover(); }
+      catch {
+        const failed = this.fail("offline_unavailable");
+        this.setOfflineStatus({ phase: "error", error: failed.error });
+        return failed;
+      }
+
+      const environment = await this.checkGameLaunchEnvironment();
+      const cancelledAfterEnvironment = await this.finishOfflineCancellation();
+      if (cancelledAfterEnvironment) return cancelledAfterEnvironment;
+      if (!environment.ok) {
+        this.setOfflineStatus({ phase: "error", error: environment.error });
+        return environment;
+      }
+
+      if (!this.offlineSession) {
+        if (this.p.offlineFreeMemory) {
+          let available = NaN;
+          try { available = this.p.offlineFreeMemory(); }
+          catch { log.warn("Offline free memory could not be queried"); }
+          if (!hasOfflineMemory(available)) {
+            const failed = this.fail("offline_insufficient_memory", String(OFFLINE_REQUIRED_AVAILABLE_MIB));
+            this.setOfflineStatus({ phase: "error", error: failed.error });
+            return failed;
+          }
+        }
+        try {
+          this.offlineSession = await startOfflineStack((phase) => {
+            if (!this.offlineCancelRequested) {
+              this.setOfflineStatus({ phase });
+            }
+          });
+        } catch (e) {
+          const cancelledDuringStart = await this.finishOfflineCancellation();
+          if (cancelledDuringStart) return cancelledDuringStart;
+          log.error(`local stack could not start: ${describeError(e)}`);
+          const failed = this.fail("offline_unavailable");
+          this.setOfflineStatus({ phase: "error", error: failed.error });
+          return failed;
+        }
+
+        if (!this.offlineSession) {
+          const failed = this.fail("offline_unavailable");
+          this.setOfflineStatus({ phase: "error", error: failed.error });
+          return failed;
+        }
+      }
+      const cancelledAfterStack = await this.finishOfflineCancellation();
+      if (cancelledAfterStack) return cancelledAfterStack;
+      const offlineSession = this.offlineSession;
+      let account = await this.offlineAccount(offlineSession.endpoint);
+      const cancelledAfterAccount = await this.finishOfflineCancellation();
+      if (cancelledAfterAccount) return cancelledAfterAccount;
+
+      if (account.kind === "register") {
+        if (username === undefined) {
+          this.setOfflineStatus({ phase: "needs-username" });
+          return OK;
+        }
+
+        account = await this.registerOfflineAccount(
+            offlineSession.endpoint,
+            username,
+        );
+        const cancelledAfterRegistration = await this.finishOfflineCancellation();
+        if (cancelledAfterRegistration) return cancelledAfterRegistration;
+      }
+
+        if (
+            account.kind === "error" &&
+            (account.error.code === "username_invalid" ||
+                account.error.code === "username_taken")
+        ) {
+          const failed = err(account.error.code, account.error.detail);
+
+          this.setOfflineStatus({
+            phase: "needs-username",
+            error: failed.error,
+          });
+
+          return failed;
+        }
+
+      if (account.kind === "error") {
+        const failed = this.fail(account.error.code, account.error.detail);
+        await this.releaseOfflineSession();
+        this.setOfflineStatus({ phase: "error", error: failed.error });
+        return failed;
+      }
+
+      const installReady = await this.prepareGameInstall();
+
+      const cancelledAfterInstall = await this.finishOfflineCancellation();
+      if (cancelledAfterInstall) return cancelledAfterInstall;
+
+      if (!installReady.ok) {
+        await this.releaseOfflineSession();
+        this.setOfflineStatus({
+          phase: "error",
+          error: installReady.error,
+        });
+        return installReady;
+      }
+
+      const ep = offlineSession.endpoint;
+      const key = account.key;
+
+      this.setOfflineStatus({ phase: "launching-game" });
+
+      const result = await this.launchGame(
+          ep.host,
+          ep.port,
+          XMPP_PORT,
+          key,
+          async () => {
+            this.setOfflineStatus({ phase: "stopping" });
+
+            try {
+              await endPlaying(ep, key);
+            } finally {
+              await this.releaseOfflineSession();
+              this.setOfflineStatus({ phase: "stopped" });
+            }
+          },
+          " (offline)",
+      );
+
+      if (!result.ok) {
+        await this.releaseOfflineSession();
+        this.setOfflineStatus({ phase: "error", error: result.error });
+        return result;
+      }
+
+      if (!this.game.running) {
+        return OK;
+      }
+
+      this.setOfflineStatus({ phase: "running" });
+      return OK;
+    });
+    this.offlineStartTask = task;
+    try {
+      return await task;
+    } finally {
+      if (this.offlineStartTask === task) {
+        this.offlineStartTask = null;
+      }
+
+      this.offlineStarting = false;
+    }
+  }
+
+  async stopOffline(): Promise<ActionResult> {
+    if (this.game.running || this.offline.phase === "launching-game") {
+      return err("busy");
+    }
+
+    if (this.offlineStarting) {
+      this.offlineCancelRequested = true;
+      this.setOfflineStatus({ phase: "stopping" });
+      return OK;
+    }
+
+    if (!this.offlineSession) {
+      this.setOfflineStatus({ phase: "stopped" });
+      return OK;
+    }
+
+    this.setOfflineStatus({ phase: "stopping" });
+
+    try {
+      await this.releaseOfflineSession();
+      this.setOfflineStatus({ phase: "stopped" });
+      return OK;
+    } catch (e) {
+      log.error(`local stack could not stop: ${describeError(e)}`);
+      const failed = this.fail("offline_unavailable");
+      this.setOfflineStatus({ phase: "error", error: failed.error });
+      return failed;
+    }
+  }
+
   async play(): Promise<ActionResult> {
-    if (this.busy || this.task) return err("busy");
+    if (this.busy || this.task || this.shuttingDown) return err("busy");
+    if (this.offlineSession || this.offlineStarting) return err("busy");
     if (this.game.running) return this.fail("already_running");
     const sv = this.s.server;
     const slot = this.slot();
     if (!sv || !slot) return this.fail("server_unreachable");
     return this.withBusy(async () => {
-      const missing = [...missingVcRuntime(process.env, this.p.runtimeFilesExist ?? existsSync, this.hostPlatform), ...missingDirectX(process.env, this.p.runtimeFilesExist ?? existsSync, this.hostPlatform)];
-      if (missing.length) return this.fail('windows_runtime_missing', missing.join(', '));
+      const environment = await this.checkGameLaunchEnvironment();
+      if (!environment.ok) return environment;
 
-      const others = await this.p.findRunningClients();
-      if (others.length > 0) return this.fail("already_running");
       const key = await this.keys.load(slot).catch(() => null);
       if (!key) return this.fail("key_invalid");
       const ep = this.endpoint();
       if (!ep) return this.fail('server_unreachable');
       const account = await fetchUserInfo(ep, key);
       if (!account.ok) {
-        this.keyRejected = account.error === 'key_rejected';
-        return this.fail(account.error);
+        this.keyRejected = account.error === 'key_rejected' || account.error === 'account_banned';
+        return this.fail(account.error, account.detail);
       }
+    const deviceCheck=await checkDeviceSignals(ep,key,await (this.p.collectDeviceSignals?.() ?? collectDeviceSignals(this.hostPlatform)));
+      if(!deviceCheck.ok)return this.fail(deviceCheck.error,deviceCheck.detail);
       this.keyRejected = false;
-
-
-      const dir = this.installDir;
-      await this.inspectInstall();
-      if (this.install.missing.length > 0) return this.fail("game_files_invalid", String(this.install.missing.length));
-      // Same checks as play.ps1 on every launch: the exe and both DLLs by hash.
-      const exePin = this.p.exePin ?? { relativePath: EXE_RELATIVE_PATH, sha256: PINNED_EXE_SHA256 };
-      let exeHash = "";
-      try {
-        exeHash = await hashFile(resolveInside(dir, exePin.relativePath));
-      } catch {
-        exeHash = "";
-      }
-      if (exeHash !== exePin.sha256) return this.fail("game_files_invalid", exePin.relativePath);
-      if (!this.install.dllsOk) {
+      const chosenRegion = !this.s.huntRegion || this.s.huntRegion === 'auto'
+        ? await chooseClosestRegion(ep, key) : this.s.huntRegion;
+      if (chosenRegion) {
         try {
-          await installPinnedDlls(this.p.resourcesDir, dir);
-        } catch (e) {
-          log.error(`DLL repair before launch failed: ${describeError(e)}`);
-          return this.fail("dll_failed");
-        }
+          if (!await saveHuntRegion(ep,key,chosenRegion)) return this.fail('server_error','The selected hunt region is unavailable. Choose Main in Settings or try again later.');
+        } catch { return this.fail('server_unreachable'); }
       }
+      const installReady = await this.prepareGameInstall();
+      if (!installReady.ok) return installReady;
 
       // Where the game connects. Public mode: the local relay, started before the game.
       let gameHost = sv.host;
@@ -1115,60 +1500,152 @@ export class Controller {
       }
 
       let launched = false;
+
       try {
-        let prepared: { runtime: LaunchRuntime; configDir: string; runtimeName: string } | null = null;
-        if (this.p.prepareGameLaunch) {
-          try {
-            prepared = await this.p.prepareGameLaunch();
-          } catch (e) {
-            log.error(`compatibility runtime preparation failed: ${describeError(e)}`);
-            return this.fail("launch_failed");
-          }
-          if (this.hostPlatform === "linux" && prepared === null) return this.fail("compat_runtime_missing");
-        }
-        let displayRepaired = false;
-
-        try {
-          const config = await applyGameConfig({
-            host: gameHost,
+        const result = await this.launchGame(
+            gameHost,
+            gamePort,
             xmppPort,
-            graphics: this.s.graphics,
-            exposure: this.s.exposure,
-            safeWindow: this.s.windowed,
+            key,
+            () => endPlaying(ep, key),
+            sv.mode === "public" ? ` (relay to ${sv.host}:${sv.port})` : "",
+        );
 
-            configDir: prepared?.configDir ?? this.p.gameConfigDir,
-          });
-          displayRepaired = config.displayRepaired;
-
-          if (this.s.exposure !== "game") log.info(`game config: auto exposure ${this.s.exposure}`);
-        } catch (e) {
-          log.error(`could not write the game config: ${describeError(e)}`);
-          return this.fail("config_failed");
-        }
-        const args = buildLaunchArgs({ host: gameHost, port: gamePort, key, windowed: this.s.windowed || displayRepaired });
-        const via = prepared ? ` via ${prepared.runtimeName}` : "";
-        log.info(`starting ${describeLaunch(EXE_NAME, args)}${via}${sv.mode === "public" ? ` (relay to ${sv.host}:${sv.port})` : ""}`);
-        try {
-          await this.game.start(win64Dir(dir), args, prepared?.runtime);
-        } catch (e) {
-          log.error(`launch failed: ${describeError(e)}`);
-          return this.fail("launch_failed");
-        }
-        launched = true;
-        return OK;
+        launched = result.ok;
+        return result;
       } finally {
         if (!launched) await this.stopRelay();
       }
     });
   }
 
+  private async checkGameLaunchEnvironment(): Promise<ActionResult> {
+    const missing = [
+      ...missingVcRuntime(process.env, this.p.runtimeFilesExist ?? existsSync, this.hostPlatform),
+      ...missingDirectX(process.env, this.p.runtimeFilesExist ?? existsSync, this.hostPlatform),
+    ];
+    if (missing.length) return this.fail("windows_runtime_missing", missing.join(", "));
+
+    const others = await this.p.findRunningClients();
+    if (others.length > 0) return this.fail("already_running");
+
+    return OK;
+  }
+
+  private async prepareGameInstall(): Promise<ActionResult> {
+    const dir = this.installDir;
+
+    await this.inspectInstall();
+    if (this.install.missing.length > 0) return this.fail("game_files_invalid", String(this.install.missing.length));
+
+    // Same checks as play.ps1 on every launch: the exe and both DLLs by hash.
+    const exePin = this.p.exePin ?? { relativePath: EXE_RELATIVE_PATH, sha256: PINNED_EXE_SHA256 };
+    let exeHash = "";
+
+    try {
+      exeHash = await hashFile(resolveInside(dir, exePin.relativePath));
+    } catch {
+      exeHash = "";
+    }
+
+    if (exeHash !== exePin.sha256) return this.fail("game_files_invalid", exePin.relativePath);
+
+    if (!this.install.dllsOk) {
+      try {
+        await installPinnedDlls(this.p.resourcesDir, dir);
+      } catch (e) {
+        log.error(`DLL repair before launch failed: ${describeError(e)}`);
+        return this.fail("dll_failed");
+      }
+    }
+
+    await this.installMods(dir);
+    return OK;
+  }
+
+  private async launchGame(
+      gameHost: string,
+      gamePort: number,
+      xmppPort: number,
+      key: string,
+      onExit: () => Promise<void>,
+      logSuffix = "",
+  ): Promise<ActionResult> {
+    let prepared: { runtime: LaunchRuntime; configDir: string; runtimeName: string } | null = null;
+
+    if (this.p.prepareGameLaunch) {
+      try {
+        prepared = await this.p.prepareGameLaunch();
+      } catch (e) {
+        log.error(`compatibility runtime preparation failed: ${describeError(e)}`);
+        return this.fail("launch_failed");
+      }
+
+      if (this.hostPlatform === "linux" && prepared === null) return this.fail("compat_runtime_missing");
+    }
+
+    let displayRepaired = false;
+
+    try {
+      const config = await applyGameConfig({
+        host: gameHost,
+        xmppPort,
+        graphics: this.s.graphics,
+        exposure: this.s.exposure,
+        safeWindow: this.s.windowed,
+        configDir: prepared?.configDir ?? this.p.gameConfigDir,
+      });
+
+      displayRepaired = config.displayRepaired;
+
+      if (this.s.exposure !== "game") log.info(`game config: auto exposure ${this.s.exposure}`);
+    } catch (e) {
+      log.error(`could not write the game config: ${describeError(e)}`);
+      return this.fail("config_failed");
+    }
+
+    const args = buildLaunchArgs({
+      host: gameHost,
+      port: gamePort,
+      key,
+      windowed: this.s.windowed || displayRepaired,
+      gameLocale: gameLocale(this.s.gameLanguage, this.p.systemLocale ?? "en-US"),
+    });
+
+    const via = prepared ? ` via ${prepared.runtimeName}` : "";
+    log.info(`starting ${describeLaunch(EXE_NAME, args)}${via}${logSuffix}`);
+
+    try {
+      this.endPlayingSession = onExit;
+      await this.game.start(
+          win64Dir(this.installDir),
+          args,
+          prepared?.runtime,
+          this.s.showConsole ? { DR_SHOW_CONSOLE: "1" } : undefined,
+      );
+    } catch (e) {
+      this.endPlayingSession = null;
+      log.error(`launch failed: ${describeError(e)}`);
+      return this.fail("launch_failed");
+    }
+
+    return OK;
+  }
+
   private async startRelay(sv: StoredServer): Promise<ActionResult> {
     await this.stopRelay();
     if (sv.mode !== "public" || sv.fp === null) return err("relay_failed");
     const port = this.p.relayPort ?? DEFAULT_RELAY_PORT;
+    // Windows launches the game directly. Wine/Proton's wrapper PID is not its socket owner.
+    const ownerCheck = this.hostPlatform === "win32" ? createRelayOwnerCheck() : undefined;
     const relay = new Relay({
       target: { host: sv.host, port: sv.port, fingerprint: sv.fp },
       port,
+      authorizeConnection: ownerCheck ? async (socket) => {
+        const pid = this.game.pid;
+        if (!pid) return false;
+        return await ownerCheck(socket, pid) && this.game.pid === pid;
+      } : undefined,
       onPinError: () => {
         this.lastError = { code: "cert_mismatch" };
         this.publish();
@@ -1203,11 +1680,15 @@ export class Controller {
         if (GRAPHICS_PRESETS.includes(p.graphics as GraphicsPreset)) s.graphics = p.graphics as GraphicsPreset;
         if (EXPOSURE_MODES.includes(p.exposure as ExposureMode)) s.exposure = p.exposure as ExposureMode;
         if (typeof p.windowed === "boolean") s.windowed = p.windowed;
-        if (p.language === "en" || p.language === "fi") s.language = p.language;
+        if (typeof p.streamerMode === "boolean") s.streamerMode = p.streamerMode;
+        if (typeof p.showConsole === "boolean") s.showConsole = p.showConsole;
+        if (p.huntRegion === 'auto' || p.huntRegion === 'main' || p.huntRegion === 'ger' || p.huntRegion === 'us') s.huntRegion = p.huntRegion;
+        if (LANGUAGES.includes(p.language as Language)) s.language = p.language as Language;
+        if (GAME_LANGUAGES.includes(p.gameLanguage as GameLanguage)) s.gameLanguage = p.gameLanguage as GameLanguage;
       });
     }
     this.publish();
-    return { graphics: this.s.graphics, exposure: this.s.exposure, windowed: this.s.windowed, language: this.s.language };
+    return { graphics: this.s.graphics, exposure: this.s.exposure, windowed: this.s.windowed, language: this.s.language, gameLanguage: this.s.gameLanguage, streamerMode: this.s.streamerMode, showConsole: this.s.showConsole, ...(this.s.huntRegion ? {huntRegion:this.s.huntRegion} : {}) };
   }
 
   async openExternal(target: ExternalTarget): Promise<ActionResult> {
@@ -1229,9 +1710,60 @@ export class Controller {
   }
 
   async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    await this.saveTask?.catch(() => undefined);
     this.setStatusPolling(false);
     this.job?.cancel();
     this.taskAbort?.abort();
+
+    const offlineStartTask = this.offlineStartTask;
+
+    if (offlineStartTask) {
+      this.offlineCancelRequested = true;
+
+      if (!this.game.running && this.offline.phase !== "launching-game") {
+        this.setOfflineStatus({ phase: "stopping" });
+      }
+
+      await offlineStartTask.catch(() => undefined);
+    }
+
+    if (this.offlineSession) {
+      this.setOfflineStatus({ phase: "stopping" });
+
+      try {
+        await this.releaseOfflineSession();
+        this.setOfflineStatus({ phase: "stopped" });
+      } catch (e) {
+        log.error(`local stack could not stop during shutdown: ${describeError(e)}`);
+      }
+    }
+
     await this.stopRelay();
+  }
+
+  exportOfflineSave(file: string): Promise<ActionResult> {
+    return this.offlineSaveOperation("exportSave", file);
+  }
+
+  importOfflineSave(file: string): Promise<ActionResult> {
+    return this.offlineSaveOperation("importSave", file);
+  }
+
+  private async offlineSaveOperation(method: "exportSave" | "importSave", file: string): Promise<ActionResult> {
+    if (this.busy || this.task || this.game.running || this.offlineSession || this.offlineStarting ||
+        this.offline.phase === "stopping" || this.shuttingDown) return err("busy");
+    if (!this.p.offlineSave) return err("offline_unavailable");
+    const task = this.withBusy(async () => {
+      // Protect against another launcher-owned game and interrupted restore journals.
+      try {
+        if ((await this.p.findRunningClients()).length) return err("busy");
+        return await this.p.offlineSave![method](file);
+      }
+      catch { return err("unknown"); }
+    });
+    this.saveTask = task;
+    try { return await task; }
+    finally { this.saveTask = null; }
   }
 }

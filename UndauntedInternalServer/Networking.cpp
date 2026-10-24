@@ -2,10 +2,21 @@
 
 #include <iostream>
 #include "ChannelLookup.h"
+#include "OwnerRelevancy.h"
+#include "ReplicationCadence.h"
 #include <fstream>
 #include <filesystem>
+#include "NativeDiagnostics.h"
+#include "MinHook/MinHook.h"
 
 using namespace SDK;
+
+extern "C" {
+    __declspec(dllexport) volatile unsigned long long DR_ActorReplicationAttempts = 0;
+    __declspec(dllexport) volatile unsigned long long DR_OwnerReplicationSkipped = 0;
+    __declspec(dllexport) volatile unsigned long long DR_ActorUpdatesDeferred = 0;
+    __declspec(dllexport) volatile unsigned long long DR_ChannelAssignmentTrackingEnabled = 0;
+}
 
 namespace Networking {
     UNetDriver* NetDriver = nullptr;
@@ -13,8 +24,14 @@ namespace Networking {
 
     static std::vector<AActor*> BuildConsiderList(UWorld* World, UNetDriver* Driver) {
         std::vector<AActor*> Actors = std::vector<AActor*>();
+        static ReplicationCadence Cadence;
+        static UWorld* PreviousWorld = nullptr;
+        if (PreviousWorld != World) { Cadence.Clear();PreviousWorld = World; }
+        const double Now = GetTickCount64() / 1000.0;
+        Cadence.Prune(Now);
 
         for (ULevel* Level : World->Levels) {
+            if (!Level) continue;
             for (AActor* Actor : Level->Actors) {
                 if (!Actor)
                     continue;
@@ -26,6 +43,13 @@ namespace Networking {
                     continue;
 
                 if (!reinterpret_cast<UWorld * (*)(AActor*)>(*(void**)((uintptr_t)Actor->VTable + 0x150))(Actor)) {
+                    continue;
+                }
+
+                const bool Urgent = Actor->bReplicateMovement || Actor->bTearOff || Actor->bNetTemporary ||
+                    Actor->IsA(APawn::StaticClass()) || Actor->IsA(AController::StaticClass());
+                if (!Cadence.Due(Actor, Actor->Index, Now, Actor->NetUpdateFrequency, Urgent)) {
+                    ++DR_ActorUpdatesDeferred;
                     continue;
                 }
 
@@ -70,25 +94,86 @@ namespace Networking {
         return Actors;
     }
 
-    // Indices, not cached channel pointers: replication can remove/reorder channels in this tick.
-    using ChannelIndex = std::unordered_map<AActor*, int32>;
+    using ActorChannelIndex = ChannelIndex<AActor>;
 
     static AActor* ChannelActor(UChannel* Channel) {
         return Channel && Channel->Class == UActorChannel::StaticClass()
             ? static_cast<UActorChannel*>(Channel)->Actor : nullptr;
     }
 
-    static ChannelIndex IndexActorChannels(UNetConnection* Connection) {
-        return IndexChannels<AActor>(Connection->OpenChannels.Num(),
-            [Connection](int i) { return Connection->OpenChannels[i]; }, ChannelActor);
+    // Only scopes on the current game thread receive assignment notifications.
+    // Other connections get a fresh index when their replication pass starts.
+    // A linked scope also preserves notification delivery during reentrant calls.
+    struct ChannelTrackingScope;
+    static thread_local ChannelTrackingScope* ActiveChannelTracking = nullptr;
+
+    struct ChannelTrackingScope {
+        UNetConnection* Connection;
+        ActorChannelIndex& Index;
+        ChannelTrackingScope* Previous;
+
+        ChannelTrackingScope(UNetConnection* InConnection, ActorChannelIndex& InIndex)
+            : Connection(InConnection), Index(InIndex), Previous(ActiveChannelTracking) {
+            ActiveChannelTracking = this;
+        }
+        ~ChannelTrackingScope() { ActiveChannelTracking = Previous; }
+        ChannelTrackingScope(const ChannelTrackingScope&) = delete;
+        ChannelTrackingScope& operator=(const ChannelTrackingScope&) = delete;
+    };
+
+    static void NoteActorAssignment(UNetConnection* Connection, AActor* Actor, bool Completed = false) {
+        for (auto* Scope = ActiveChannelTracking; Scope; Scope = Scope->Previous)
+            if (Scope->Connection == Connection) {
+                if (Completed) Scope->Index.AssignmentCompleted(Actor, Connection->OpenChannels.Num(),
+                    [Connection](int i) { return Connection->OpenChannels[i]; }, ChannelActor);
+                else Scope->Index.ActorAssigned(Actor);
+            }
     }
 
-    static UActorChannel* GetActorChannelForConnectionAndActor(UNetConnection* Connection, AActor* Actor, const ChannelIndex& Index) {
+    using SetChannelActorFn = void(*)(UActorChannel*, AActor*, unsigned int);
+    static void* OriginalSetChannelActor = nullptr;
+
+    static void SetChannelActorHook(UActorChannel* Channel, AActor* Actor, unsigned int Flags) {
+        // In 1.4.4, Connection is at 0x28 and SetChannelActor (0x3283450)
+        // assigns Actor at 0x70. Use the same signature as our existing call.
+        // Capture the owner while Channel is live; never dereference Channel
+        // after the engine call, which may run callbacks or release channels.
+        auto* Connection = Channel ? Channel->Connection : nullptr;
+        NoteActorAssignment(Connection, Actor);
+        reinterpret_cast<SetChannelActorFn>(OriginalSetChannelActor)(Channel, Actor, Flags);
+        // A reentrant lookup can rebuild while the assignment is in progress.
+        // Re-notify on return so it cannot erase knowledge of the new actor.
+        NoteActorAssignment(Connection, Actor, true);
+    }
+
+    void InitChannelTracking(uintptr_t ImageBase) {
+        auto* Target = reinterpret_cast<void*>(ImageBase + 0x3283450);
+        const auto Created = MH_CreateHook(Target, SetChannelActorHook, &OriginalSetChannelActor);
+        const auto Enabled = Created == MH_OK ? MH_EnableHook(Target) : Created;
+        if (Enabled == MH_OK) {
+            DR_ChannelAssignmentTrackingEnabled = 1;
+            std::cout << "Actor channel assignment tracking enabled" << std::endl;
+        } else {
+            if (Created == MH_OK) MH_RemoveHook(Target);
+            std::cerr << "Actor channel assignment tracking unavailable (" << Enabled
+                << "); using conservative channel lookup" << std::endl;
+        }
+    }
+
+    static ActorChannelIndex IndexActorChannels(UNetConnection* Connection) {
+        return IndexChannels<AActor>(Connection->OpenChannels.Num(),
+            [Connection](int i) { return Connection->OpenChannels[i]; }, ChannelActor,
+            DR_ChannelAssignmentTrackingEnabled != 0);
+    }
+
+    static UActorChannel* GetActorChannelForConnectionAndActor(UNetConnection* Connection, AActor* Actor, ActorChannelIndex& Index) {
         return static_cast<UActorChannel*>(FindChannel(Actor, Index, Connection->OpenChannels.Num(),
             [Connection](int i) { return Connection->OpenChannels[i]; }, ChannelActor));
     }
 
     bool Listen(UEngine* Engine, int Port) {
+        if (!Engine || !UWorld::GetWorld()) return false;
+        NetDriver = nullptr;
         BaseAddress = (uintptr_t)GetModuleHandleA(nullptr);
 
         FName GameNetDriver = UKismetStringLibrary::Conv_StringToName(L"GameNetDriver");
@@ -112,6 +197,10 @@ namespace Networking {
             }
         }
 
+        if (!NetDriver) {
+            std::cerr << "Net driver creation failed" << std::endl;
+            return false;
+        }
         std::cout << NetDriver->GetFullName() << std::endl;
 
         reinterpret_cast<void(*)(UNetDriver*, UWorld*)>(BaseAddress + 0x3491890)(NetDriver, UWorld::GetWorld());
@@ -141,9 +230,27 @@ namespace Networking {
     }
 
     void TickNetworking() {
+        if (!NetDriver || !UWorld::GetWorld()) return;
         UWorld::GetWorld()->NetDriver = NetDriver;
 
         NetDriver->World = UWorld::GetWorld();
+
+        static ULONGLONG NextDiagnostic = 0;
+        static unsigned DiagnosticCount = 0;
+        if (DiagnosticCount < 4096 && GetTickCount64() >= NextDiagnostic) {
+            ++DiagnosticCount;
+            NextDiagnostic = GetTickCount64() + 30000;
+            int Ready = 0, Owned = 0;
+            for (auto* Connection : NetDriver->ClientConnections) {
+                if (!Connection) continue;
+                Owned += Connection->OwningActor != nullptr;
+                Ready += *(uint32_t*)((uintptr_t)Connection + 0x134) == 3;
+            }
+            char Line[512] = {};
+            int Size = sprintf_s(Line, "net driver=%s connections=%d owned=%d open=%d\n",
+                NetDriver->GetName().c_str(), NetDriver->ClientConnections.Num(), Owned, Ready);
+            if (Size > 0) DR_WriteDiagnostic(Line, Size);
+        }
 
         static FName name = FName();
         static bool nameInit = false;
@@ -170,8 +277,19 @@ namespace Networking {
             if (!Connection || !Connection->OwningActor || *(uint32_t*)((uintptr_t)Connection + 0x134) != 3)
                 continue;
 
-            const ChannelIndex Channels = IndexActorChannels(Connection);
+            auto Channels = IndexActorChannels(Connection);
+            ChannelTrackingScope TrackAssignments(Connection, Channels);
             for (AActor* Actor : Actors) {
+                // The engine's normal relevancy pass is replaced by this loop. Preserve
+                // owner-only isolation rather than opening private actors on every client.
+                auto* Pawn = Connection->PlayerController ? Connection->PlayerController->Pawn : nullptr;
+                if (Actor->bOnlyRelevantToOwner && !Actor->bAlwaysRelevant &&
+                    !(Pawn && Actor->Instigator == Pawn) &&
+                    !IsConnectionOwner(Actor, Connection->OwningActor,
+                        static_cast<AActor*>(Pawn), [](AActor* Value) { return Value->Owner; })) {
+                    ++DR_OwnerReplicationSkipped;
+                    continue;
+                }
                 if (Actor->Class->CastFlags & EClassCastFlags::PlayerController) {
                     if (Actor != Connection->OwningActor) {
                         continue;
@@ -196,6 +314,7 @@ namespace Networking {
                 }
 
                 if (ActorChannel && ActorChannel->Actor) {
+                    ++DR_ActorReplicationAttempts;
                     if (!(*(int*)((uintptr_t)ActorChannel + 0x90) & 2u)) {
                         *(int*)((uintptr_t)ActorChannel + 0x90) |= 2u;
                     }

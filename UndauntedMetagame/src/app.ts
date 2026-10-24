@@ -1,4 +1,6 @@
 import express from "express";
+import {keyRotationRouter} from './routes/keyrotation';
+import {CheckPlayerAccess} from './controllers/moderation';
 import { TrackBackendHealth } from './middleware/BackendHealth';
 import { loginRouter } from "./routes/login.js";
 import { logger } from "./logger.js";
@@ -11,6 +13,7 @@ import { inventoryRouter } from "./routes/inventory.js";
 import { storeRouter } from "./routes/store.js";
 import { guildRouter } from "./routes/guild.js";
 import { tuningRouter } from "./routes/tuning.js";
+import { trialsRouter } from "./routes/trials.js";
 import { matchmakingRouter } from "./routes/matchmaking.js";
 import { partyRouter } from "./routes/party.js";
 import { slayerLinksRouter } from "./routes/slayerlinks.js";
@@ -19,9 +22,12 @@ import { loadoutRouter } from "./routes/loadout.js";
 import { undauntedApiRouter } from "./routes/undauntedapi.js";
 import { DescribeOrigin, RefuseProxiedInDevAuthMode } from "./middleware/RequestOrigin.js";
 import { BodyLog, Redact } from "./middleware/BodyLog.js";
+import { backupRouter } from './routes/backup';
 
 export const app = express();
 app.use(TrackBackendHealth);
+// Keep discovery reachable so a banned launcher can display the actual reason.
+app.use((req,res,next)=>{if(/^\/undaunted\/api\/ServerStatus\/?$/i.test(req.path) || CheckPlayerAccess(req,res))next();});
 
 // Development logins (AUTH_MODE=NONE) never answer anything relayed by the gateway or
 // another proxy; a no-op with AUTH_MODE=APIKEY. See middleware/RequestOrigin.ts.
@@ -36,8 +42,7 @@ app.use(express.urlencoded({ extended: true }));
 // game-server process (they carry the gameserver API key) rather than a player.
 // Never write credentials to the log: some routes carry a JWT in the path
 // (e.g. DELETE /account/api/oauth/sessions/kill/<token>); see Redact.
-// Behind the public-mode gateway the line ends with " via=gateway ip=<player address>";
-// a direct request keeps the old format.
+// Record the proxy category only; player addresses must not persist in request logs.
 if (process.env.LOG_REQUESTS !== "0") {
     app.use((req, _res, next) => {
         logger.info(`${req.method} ${Redact(req.path)} gs=${req.headers["x-undaunted-gameserver-apikey"] ? 1 : 0}${DescribeOrigin(req)}`);
@@ -55,6 +60,8 @@ if (process.env.LOG_BODIES === "1") {
 }
 
 app.use("/", loginRouter);
+app.use("/", keyRotationRouter);
+app.use("/", backupRouter);
 app.use("/", eosRouter);
 app.use("/", systemRouter);
 app.use("/", escalationRouter);
@@ -64,6 +71,7 @@ app.use("/", inventoryRouter);
 app.use("/", storeRouter);
 app.use("/", guildRouter);
 app.use("/", tuningRouter);
+app.use("/", trialsRouter);
 app.use("/", matchmakingRouter);
 app.use("/", partyRouter);
 app.use("/", slayerLinksRouter);

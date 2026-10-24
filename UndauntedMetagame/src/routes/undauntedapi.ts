@@ -1,4 +1,9 @@
+import {ReportDeviceSignals} from '../controllers/devicesignals';
+import {rateLimit} from 'express-rate-limit';
+import {RecoverAccountKey} from "../controllers/accountrecovery";
+import {RegionProbes} from '../controllers/regionprobes';
 import { DiscordKeyStats } from '../controllers/discordstats';
+import { GetHuntRegion, SaveHuntRegion } from '../controllers/regionpreferences';
 
 import { DiscordAccount, LinkDiscordAccount } from '../controllers/discordlinks';
 
@@ -7,6 +12,7 @@ import { DeleteInviteCode, GetAllUserIds, GetInviteCodes, GetRecentPlayerData, I
 import { HasUndauntedUserApiKey } from "../middleware/HasUndauntedUserApiKey";
 import { HasUndauntedAdminApiKey } from "../middleware/HasUndauntedAdminApiKey";
 import { SignMetagameJWTForUid } from "../controllers/auth";
+import {ModerationInfo,SetAccountBan,EndPlayingAddress,ModerationLog} from '../controllers/moderation';
 import { GetCharacterIdsForUserId, GetSaveHistory, RollbackCharacter, RollbackError, RollbackLoadout } from "../controllers/savehistory";
 import { GetObjectiveRecords, GetSelectedHuntPass, GetTrackRecords, SeedProgression } from "../controllers/realprogression";
 import { IsRealProgressionAccount } from "../controllers/progressionmode";
@@ -26,9 +32,37 @@ import { IsSoftRegisteredCaller, SoftAccountAuth } from "../middleware/SoftAccou
 import { AdminMutationRateLimit, HealthReadRateLimit } from "../middleware/RateLimits";
 import { BackendHealthEnabled, BackendRuntimeHealth } from '../middleware/BackendHealth';
 import { userapikeys, users } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 export const undauntedApiRouter = Router();
+
+const DeviceSignalRateLimit=rateLimit({keyGenerator:req=>'device:'+((req as any).UndauntedUserInfo.UserId),windowMs:60000,limit:10,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'rate_limited'}});
+undauntedApiRouter.post('/DeviceSignals',HasUndauntedUserApiKey,DeviceSignalRateLimit,(req:any,res)=>{
+    res.setHeader('Cache-Control','no-store');
+    try {
+        const result=ReportDeviceSignals(req.UndauntedUserInfo.UserId,req.body);
+        if(result.blocked){res.status(403).json({error:'device_banned',reason:result.reason});return;}
+        res.status(204).end();
+    } catch(e){
+        const unavailable=e instanceof Error && e.message==='device_signals_unavailable';
+        res.status(unavailable?503:400).json({error:unavailable?'device_signals_unavailable':'invalid_device_signals'});
+    }
+});
+
+undauntedApiRouter.get('/HuntRegion', HasUndauntedUserApiKey, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({region:GetHuntRegion((req as any).UndauntedUserInfo.UserId), enabled:process.env.US_REGION === '1' || process.env.GERMANY_REGION === '1', probes:RegionProbes()});
+});
+undauntedApiRouter.post('/HuntRegion', HasUndauntedUserApiKey, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const region = req.body?.region;
+    if (region !== 'main' && region !== 'aus' && region !== 'ger' && region !== 'us') { res.status(400).json({error:'invalid_region'}); return; }
+    if (region === 'aus') { res.status(410).json({error:'region_retired', replacement:'us'}); return; }
+    if (region === 'ger' && process.env.GERMANY_REGION !== '1') { res.status(503).json({error:'region_unavailable'}); return; }
+    if (region === 'us' && process.env.US_REGION !== '1') { res.status(503).json({error:'region_unavailable'}); return; }
+    SaveHuntRegion((req as any).UndauntedUserInfo.UserId, region);
+    res.json({region});
+});
 
 undauntedApiRouter.get('/DiscordKeyStats', HealthReadRateLimit, HasUndauntedAdminApiKey, async (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -59,11 +93,35 @@ undauntedApiRouter.get('/DashboardAccounts', HealthReadRateLimit, HasUndauntedAd
     res.setHeader('Cache-Control', 'no-store');
     const offset = req.query.offset === undefined ? 0 : Number(req.query.offset);
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > 10000000) { res.status(400).json({error: 'invalid_offset'}); return; }
+    const query=typeof req.query.q==='string'?req.query.q.trim():'';
+    if(query.length>100){res.status(400).json({error:'invalid_query'});return;}
     const rows = GetDb().select({id: users.userId, name: users.name, admin: users.isAdmin, hash: userapikeys.keyHash})
-        .from(users).leftJoin(userapikeys, eq(users.userId, userapikeys.userId)).orderBy(users.userId).limit(101).offset(offset).all();
-    res.json({accounts: rows.slice(0, 100).map(row => ({id: row.id, name: row.name, admin: row.admin,
+        .from(users).leftJoin(userapikeys, eq(users.userId, userapikeys.userId))
+        .where(query ? sql`instr(lower(${users.name}), lower(${query})) > 0 OR instr(lower(${users.userId}), lower(${query})) > 0 OR instr(lower(substr(${userapikeys.keyHash},1,16)), lower(${query})) > 0` : undefined)
+        .orderBy(users.userId).limit(101).offset(offset).all();
+    res.json({accounts: rows.slice(0, 100).map(row => ({id: row.id, name: row.name, admin: row.admin, developer:(process.env.DEVELOPER_ACCOUNT_IDS || '').split(',').map(x=>x.trim()).includes(row.id),
         keyFingerprint: row.hash && /^[a-f0-9]{64}$/i.test(row.hash) ? row.hash.slice(0, 16).toLowerCase() : null})),
         nextOffset: rows.length > 100 ? offset + 100 : null});
+});
+
+undauntedApiRouter.post('/PlayingEnded', HasUndauntedUserApiKey, (req:any,res)=>{
+    EndPlayingAddress(req.UndauntedUserInfo.UserId);
+    res.status(204).end();
+});
+
+undauntedApiRouter.get('/Moderation/:accountId', HasUndauntedAdminApiKey, (req,res)=>{
+    res.setHeader('Cache-Control','no-store');
+    res.json(ModerationInfo(String(req.params.accountId)));
+});
+undauntedApiRouter.get('/ModerationLog', HasUndauntedAdminApiKey, (req,res)=>{
+    res.setHeader('Cache-Control','no-store');
+    if(req.query.kind!=='bans' && req.query.kind!=='events'){res.status(400).json({error:'invalid_kind'});return;}
+    try {res.json(ModerationLog(req.query.kind,Number(req.query.offset??0)));}
+    catch {res.status(400).json({error:'invalid_offset'});}
+});
+undauntedApiRouter.post('/Moderation', HasUndauntedAdminApiKey, (req:any,res)=>{
+    try {res.json(SetAccountBan(req.body.accountId,req.body.reason,req.body.active,req.body.address,req.UndauntedUserInfo.UserId,req.body.durationHours,req.body.includeDevice??false));}
+    catch(e){const message=e instanceof Error?e.message:'';res.status(400).json({error:['invalid_ban','invalid_address','invalid_duration','account_not_found','admin_account_protected','address_not_observed','device_not_observed','invalid_device_scope'].includes(message)?message:'moderation_failed'});}
 });
 
 function StatusForRollbackError(Error: RollbackError){
@@ -705,4 +763,12 @@ undauntedApiRouter.get("/Guilds", HasUndauntedAdminApiKey, (req: any, res) => {
 
     res.status(200);
     res.json(ListGuilds());
+});
+
+undauntedApiRouter.get('/AccountRecovery/:userId', HealthReadRateLimit, HasUndauntedAdminApiKey, (req,res)=>{
+    res.setHeader('Cache-Control','no-store');
+    const id=String(req.params.userId);
+    if(!/^UID-[A-Za-z0-9-]{1,100}$/.test(id)){res.status(400).end();return;}
+    try {res.json({accountId:id,key:RecoverAccountKey(id)});}
+    catch {res.status(503).json({error:'recovery_unavailable'});}
 });

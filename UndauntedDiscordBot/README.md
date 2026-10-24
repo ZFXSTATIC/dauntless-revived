@@ -4,7 +4,7 @@ Run alongside the metagame with Node 22.12 or later. Copy `.env.example` to `.en
 
 The bot registers `/key claim` and `/key status` without replacing its other commands. Invite the bot with the `bot` and `applications.commands` scopes. It needs no message-content intent. Commands work in the server and in bot DMs. Codes are sent only by DM; command acknowledgements are private.
 
-`/key claim` DMs a complete `dauntless-revived://join?...` **launcher invite** containing a single-use registration code. Paste the entire invite into **Join**, then choose a username on **Register**. The launcher receives and saves the actual account login key after registration. A bare `DR-...` code is not a server invite or an account key. A retry resends the same unused invite, including after a DM failure; redeemed or revoked codes are never replaced automatically.
+`/key claim` DMs a complete `dauntless-revived://join?...` **launcher invite** containing a single-use registration code. Paste the entire invite into **Join**, then choose a username on **Register**. The launcher receives and saves the actual account login key after registration. A bare `DR-...` code is not a server invite or an account key. Each Discord user receives one invite. Failed DM delivery retries use that same unused invite; confirmed DMs are not sent again. Users previously given an ephemeral invite can run `/key claim` to receive that same unused invite once by DM. The bot does not delete DMs. Redeemed or revoked codes are never replaced automatically.
 
 Set `SERVER_CONFIG_FILE` to the installed public server's private `server.json` (normally `C:/DauntlessRevived/data/config/server.json`). The bot reads `PublicHost`, `Ports.gateway`, `CertFingerprint`, and `ServerName` to build the same v2 invite as the dashboard. Restart the bot after a host or certificate change. Always point invites at the main TLS gateway: overflow hunts are selected by the backend, not by sending users a second server invite. The current bot invite builder requires a public gateway; a Tailscale-only installation should use its kit-generated private invites.
 
@@ -28,12 +28,7 @@ the saved file, and copy the value after `Key:` into `/key link key:`. The bot a
 accepts a labelled backup or a key wrapped in Discord backticks. It never links an
 account by display name or by a shared/redeemed invite, and never replaces its key.
 
-Registration synchronizes `/key` globally (for DMs) and in the configured guild, or
-the bot's joined guilds when `DISCORD_GUILD_ID` is unset. Unchanged definitions are
-not rewritten; changed definitions preserve the existing command ID. Guild commands
-make updates available immediately. If Discord still shows **command is outdated**,
-close the command picker, reload Discord, and select Revived Warden's `/key link`
-again. This is a cached command-definition error, not an account-key rejection.
+Registration keeps one global `/key` command for servers and DMs and removes legacy guild copies. Existing global command IDs and unrelated commands are preserved. Reload Discord if an old duplicate remains cached.
 
 ## Windows supervision
 

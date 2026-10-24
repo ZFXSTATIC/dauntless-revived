@@ -317,13 +317,262 @@ img {
   }
 }
 
+/* Settings: tabs on top, one group at a time; long help behind an info tooltip. */
+/* The settings page uses the whole width: the tabs in a row on top, then one panel with a section
+   heading per group and every setting in its own row box. (.page.page-wide: .page comes later.) */
+.page.page-wide {
+  max-width: none;
+  container: settings / inline-size;
+}
+
+.settings-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-layout .settings-tabs {
+  margin: 0;
+}
+
+/* One panel holds the open tab's groups: the groups lose their own card frame and become sections. */
+.settings-panel {
+  padding: 18px 20px 20px;
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 1px solid var(--line);
+  gap: 22px;
+}
+
+.settings-panel > .card {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.settings-panel .card-title,
+.settings-panel .card-title-text {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dr-steel);
+}
+
+.settings-panel .settings-row {
+  margin-top: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.settings-panel .settings-row:hover,
+.settings-panel .settings-row:focus-within {
+  border-color: var(--edge);
+  background: color-mix(in srgb, var(--dr-deep) 45%, transparent);
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: var(--dr-ink);
+  border: 1px solid var(--line);
+}
+
+.settings-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--dr-steel);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-tab .icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.settings-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Narrow window: the tabs keep only their icons (the name stays as the tooltip and accessible name). */
+@container settings (max-width: 520px) {
+  .settings-tab-label {
+    display: none;
+  }
+}
+
+.settings-tab:hover {
+  color: var(--dr-frost);
+}
+
+.settings-tab[aria-selected="true"] {
+  background: var(--dr-deep);
+  color: var(--dr-frost);
+}
+
+.settings-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-locked {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--dr-ice);
+  border-left-width: 4px;
+  background: color-mix(in srgb, var(--dr-deep) 60%, transparent);
+  color: var(--dr-frost);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-locked .icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 1px;
+  color: var(--dr-ice);
+}
+
+.settings-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-title-text {
+  margin: 0;
+  font: inherit;
+}
+
+.info-tip {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dr-steel);
+  cursor: help;
+  flex: none;
+}
+
+.info-tip .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.info-tip:hover,
+.info-tip:focus-visible {
+  color: var(--dr-frost);
+}
+
+.info-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  z-index: 30;
+  width: max-content;
+  max-width: 340px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--edge);
+  background: var(--glass-strong);
+  color: var(--dr-frost);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 8px 24px var(--shadow);
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+
+.info-tip:hover::after,
+.info-tip:focus-visible::after {
+  opacity: 1;
+}
+
+/* Streamer mode: hidden values (filler text, blurred) with an eye to show them, and the invite text
+   as dots. */
+.secret {
+  position: relative;
+}
+
+.secret-blur {
+  filter: blur(5px);
+  user-select: none;
+}
+
+/* Floats just right of the value, so showing or hiding it never moves the layout. */
+.secret-eye {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  margin-left: 4px;
+  transform: translateY(-50%);
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dr-steel);
+  cursor: pointer;
+  flex: none;
+}
+
+.secret-eye:hover {
+  color: var(--dr-frost);
+  background: color-mix(in srgb, var(--dr-deep) 70%, transparent);
+}
+
+.secret-eye .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.textarea.masked {
+  -webkit-text-security: disc;
+}
+
 .nav-badge {
   margin-left: auto;
-  min-width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--dr-glow);
-  box-shadow: 0 0 8px var(--dr-glow);
+  width: auto;
+  height: 22px;
+  flex: none;
+  filter: drop-shadow(0 1px 3px var(--shadow));
+  pointer-events: none;
 }
 
 .rail-foot {
@@ -342,6 +591,106 @@ img {
   background: var(--dr-ink);
   border: 1px solid var(--line);
   min-height: 56px;
+}
+
+.account-chip:has(.account-switch) {
+  position: relative;
+  padding: 0;
+}
+
+.account-switch {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 28px 10px 10px;
+  border-radius: inherit;
+  cursor: pointer;
+  position: relative;
+}
+
+/* Up and down chevrons: there is more than one server to pick from. */
+.account-switch::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--dr-steel);
+  border-bottom: 2px solid var(--dr-steel);
+  transform: translateY(-75%) rotate(45deg);
+}
+
+.account-switch[aria-expanded="true"]::after {
+  transform: translateY(-25%) rotate(-135deg);
+}
+
+.account-switch:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dr-frost) 6%, transparent);
+}
+
+.account-switch:focus-visible {
+  outline: 2px solid var(--dr-glow);
+  outline-offset: 2px;
+}
+
+.account-switch:disabled {
+  cursor: default;
+}
+
+.server-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: 10px;
+  background: var(--glass-strong);
+  border: 1px solid var(--edge);
+  box-shadow: 0 12px 30px var(--shadow);
+}
+
+.server-menu-head {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dr-steel);
+}
+
+.server-menu-item {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  width: 100%;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.server-menu-item:hover,
+.server-menu-item:focus-visible {
+  background: var(--dr-deep);
+}
+
+.server-menu-name {
+  font-weight: 600;
+  color: var(--dr-frost);
+}
+
+.server-menu-sub {
+  font-size: 11.5px;
+  color: var(--dr-steel);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .avatar {
@@ -382,7 +731,8 @@ img {
 
 .lang-switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   background: var(--dr-ink);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1104,7 +1454,7 @@ img {
   border-color: var(--dr-azure);
 }
 
-.page.partners-page { max-width: 960px; }
+.page.partners-page { max-width: none; }
 
 .partners-page .card-title {
   display: flex;
@@ -1129,7 +1479,7 @@ img {
 .partner-badge { color: var(--dr-glow); border: 1px solid var(--dr-azure); letter-spacing: 0.08em; font-size: 10px; }
 .partner-title { margin: 10px 0 0; font-size: 26px; font-family: var(--font-display); line-height: 1.15; }
 .partner-copy { max-width: 860px; }
-.partner-plans { margin-top: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.partner-plans { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 .partner-plan {
   display: grid; gap: 8px; text-align: left; padding: 18px; border: 1px solid var(--dr-steel);
   border-radius: 12px; background: var(--dr-ink); color: var(--dr-frost);
@@ -1146,6 +1496,39 @@ img {
 .partner-cta .icon { width: 14px; height: 14px; }
 .partner-actions { margin-top: 20px; }
 .partner-disclosure { margin: 12px 0 0; }
+
+/* Mods page: the same parts as the Partners page (card, badge, title, two-column grid). */
+.page.mods-page { max-width: none; }
+
+/* Credits: the whole width, one section under another. */
+.page.credits-page {
+  max-width: none;
+}
+.mods-page .card-title { display: flex; align-items: center; gap: 8px; line-height: 1.25; }
+.mods-page .card-title .icon { width: 16px; height: 16px; flex: 0 0 16px; }
+.mods-page .card-text + .card-text { margin-top: 8px; }
+.mods-page .card-text + .small-print { margin-top: 10px; }
+.mods-author {
+  border-color: var(--dr-azure);
+  background: linear-gradient(135deg, var(--dr-deep), var(--dr-navy) 48%);
+  box-shadow: inset 3px 0 0 var(--dr-ice), 0 18px 40px var(--shadow);
+}
+.mods-badge { color: var(--dr-glow); border: 1px solid var(--dr-azure); letter-spacing: 0.08em; font-size: 10px; }
+.mods-title { margin: 10px 0 8px; font-size: 26px; font-family: var(--font-display); line-height: 1.15; }
+.mods-intro { max-width: 860px; }
+.mods-grid { margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.mod-card {
+  display: grid; gap: 8px; align-content: start; text-align: left; padding: 18px; border: 1px solid var(--dr-steel);
+  border-radius: 12px; background: var(--dr-ink); color: var(--dr-frost);
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.mod-card:hover { border-color: var(--dr-glow); background: var(--dr-deep); transform: translateY(-1px); }
+.mod-by { color: var(--dr-glow); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.mod-name { display: flex; align-items: center; gap: 8px; font-size: 18px; }
+.mod-name .icon { width: 18px; height: 18px; flex: 0 0 18px; color: var(--dr-glow); }
+.mod-text { color: var(--dr-frost); }
+.mod-use { color: var(--dr-steel); font-size: 12px; }
+.mods-credit { text-align: center; }
 
 .partner-banner {
   width: 100%;
@@ -1603,6 +1986,165 @@ img {
 
 /* The big button is the primary button, larger: ink on ice to glow (7.31:1 at worst), ink on glow
    when hovered, frost on azure when pressed. */
+/* PLAY with a small arrow built into its right end, past a divider: a menu with "Play offline"
+   (or back to online play). The label moves left to make room for it. */
+.play-split {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.play-split .big-button {
+  padding-right: 74px;
+}
+
+.play-more {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  padding: 0;
+  border: 0;
+  border-left: 2px solid color-mix(in srgb, var(--dr-ink) 30%, transparent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dr-ink);
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+
+/* Hover: only the arrow reacts (a nudge down), no box around it. */
+.play-more:hover:not(:disabled) .icon {
+  transform: translateY(2px);
+}
+
+.play-more .icon {
+  transition: transform 0.12s;
+}
+
+/* No focus box over the gold plate: the keyboard focus shows as a light glow on the arrow. */
+.play-more:focus,
+.play-more:focus-visible {
+  outline: none;
+}
+
+.play-more:focus-visible .icon {
+  filter: drop-shadow(0 0 3px var(--dr-frost)) drop-shadow(0 0 2px var(--dr-frost));
+}
+
+.play-more:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.play-more .icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.6;
+}
+
+.play-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  min-width: 240px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  background: var(--glass-strong);
+  box-shadow: 0 12px 30px var(--shadow);
+}
+
+.play-menu-item {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: var(--dr-frost);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.play-menu-item:hover,
+.play-menu-item:focus-visible {
+  background: var(--dr-deep);
+}
+
+.play-menu-item .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--dr-ice);
+}
+
+/* Offline play's progress: the steps, done, current and to come, and a bar. */
+.offline-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.offline-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--dr-steel);
+}
+
+.offline-step .icon,
+.offline-step .spinner {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.offline-step.is-done {
+  color: var(--dr-frost);
+}
+
+.offline-step.is-done .icon {
+  color: var(--dr-ice);
+}
+
+.offline-step.is-current {
+  color: var(--dr-frost);
+  font-weight: 600;
+}
+
+.offline-dot {
+  width: 10px;
+  height: 10px;
+  margin: 4px;
+  border-radius: 50%;
+  border: 1px solid var(--edge);
+  flex: none;
+}
+
+.offline-bar {
+  height: 6px;
+  margin-top: 14px;
+  border-radius: 3px;
+  background: var(--dr-deep);
+  overflow: hidden;
+}
+
+.offline-bar > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--dr-ice);
+  transition: width 0.3s;
+}
+
 .big-button {
   position: relative;
   min-width: 250px;
@@ -1748,6 +2290,20 @@ img {
 
 .step-line.done {
   background: var(--dr-ice);
+}
+
+.steps.compact .step:not(.current) .step-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.steps.compact .step-line {
+  width: 22px;
+  margin: 0 6px;
 }
 
 .action-hint {
@@ -2297,6 +2853,25 @@ img {
   gap: 16px;
 }
 
+/* The Server page uses the whole width: players and worlds each get a full-width card, laid out in
+   as many columns as fit, so the page needs little scrolling at any window size. */
+.page.page-server {
+  max-width: none;
+}
+
+.page-server .grid-2 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.page-server .players {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  column-gap: 8px;
+}
+
+.page-server .instances {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
 .settings-section {
   display: grid;
   gap: 12px;
@@ -2355,6 +2930,89 @@ img {
   color: var(--dr-frost);
 }
 
+/* The launcher's own dropdown (dropdown() in index.ts): the closed .select look on a button,
+   and a navy list with the same steel edge instead of the list Windows draws for <select>. */
+.dropdown {
+  position: relative;
+  flex: none;
+}
+
+.dropdown-button {
+  min-width: 220px;
+  color: var(--dr-frost);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.dropdown-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.dropdown-button[aria-expanded="true"] {
+  border-color: var(--dr-glow);
+}
+
+.dropdown-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  /* As wide as the longest option (never a horizontal scroll), at least as wide as the button,
+     growing to the left: the dropdowns sit at the right edge of their rows. */
+  width: max-content;
+  min-width: 100%;
+  max-width: 420px;
+  max-height: min(360px, 60vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--glass-strong);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px var(--shadow);
+  backdrop-filter: blur(12px);
+  outline: none;
+}
+
+/* No white square where two scrollbars would meet. */
+.dropdown-list::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.dropdown-up .dropdown-list {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.dropdown-option {
+  padding: 8px 12px;
+  border-radius: 7px;
+  color: var(--dr-frost);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dropdown-option.active {
+  background: var(--dr-deep);
+}
+
+/* The chosen option: a soft glow aura, and the text in glow. */
+.dropdown-option[aria-selected="true"] {
+  color: var(--dr-glow);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--dr-glow) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dr-glow) 45%, transparent), 0 0 12px color-mix(in srgb, var(--dr-glow) 18%, transparent);
+}
+
+.dropdown-option[aria-selected="true"].active {
+  background: color-mix(in srgb, var(--dr-glow) 20%, var(--dr-deep));
+}
+
 /* Off: a steel knob in a steel-edged track. On: an ink knob on ice (7.31:1). */
 .switch {
   position: relative;
@@ -2376,7 +3034,7 @@ img {
   height: 18px;
   border-radius: 50%;
   background: var(--dr-steel);
-  transition: transform 0.15s, background 0.15s;
+  transition: transform 0.22s cubic-bezier(0.3, 1.4, 0.5, 1), background 0.15s;
 }
 
 .switch:hover {

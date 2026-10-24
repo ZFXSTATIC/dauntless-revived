@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { logger } from "../logger";
 import { GetUserIDForAPIKey, SignMetagameJWTForUid } from "../controllers/auth";
+import {CheckPlayerAccess} from '../controllers/moderation';
 import { HasUndauntedMetagameAuth } from "../middleware/HasUndauntedMetagameAuth";
 import { DisplayNameForUserId, FindAccountByUsername, FindUsernameForUserId, FindUsernames } from "../controllers/login";
 import { SoftMetagameAuth, SoftPlayerOf } from "../middleware/PlayerAuth";
@@ -38,6 +39,7 @@ eosRouter.post("/account/api/oauth/token", LoginRateLimit, async (req, res) => {
         const UserId = await GetUserIDForAPIKey(ApiKey);
 
         if(UserId != undefined){
+            if(!CheckPlayerAccess(req,res,UserId))return;
             logger.info(`Logging in ${UserId}!`);
 
             const AuthToken = SignMetagameJWTForUid(UserId);

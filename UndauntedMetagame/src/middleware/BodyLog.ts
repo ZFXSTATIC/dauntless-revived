@@ -48,8 +48,8 @@ function RedactJwt(Text: string): string {
 // The routes whose request bodies LOG_BODIES records: the save routes that are still stubbed or
 // missing (their request formats are only inferred from the client binary, and a wrong response shape
 // can crash the client), the party, friends, guild and account lookups of roadmap 1.9 and 3.11, and the
-// store, Slayer Link and Escalation routes of the Harmonic port.
-export const BODY_ROUTES = /^\/(progression|huntpass|bounty|cooldown|escalation|entitlement|loadout\/[^/]+\/[^/]+\/unlock|product|token\/|notification\/|reconcile|slayerlink|candidate|party|friends|guild|balance|store|inventory|account\/api\/public\/account|account\/mapping|accountinfo\/public)/;
+// store, Trials, leaderboard-profile, Slayer Link and Escalation routes of the Harmonic port.
+export const BODY_ROUTES = /^\/(progression|huntpass|bounty|cooldown|escalation|entitlement|loadout\/[^/]+\/[^/]+\/unlock|product|token\/|notification\/|reconcile|slayerlink|candidate|party|friends|guild|balance|store|inventory|trials\/|profile\/update|account\/api\/public\/account|account\/mapping|accountinfo\/public)/;
 
 // Lines written per "METHOD /path" in this run, for BODY_LOG_PER_PATH
 const LinesPerPath = new Map<string, number>();

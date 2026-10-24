@@ -21,3 +21,6 @@ delete process.env.ENABLE_DOJO;
 export function RemoveDeployTestDir(){
     fs.rmSync(Dir, { recursive: true, force: true });
 }
+
+// Legacy fixed-city coverage; pool behavior has its own tests.
+process.env.RAMSGATE_POOL = '0';

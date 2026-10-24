@@ -16,7 +16,7 @@ $dir = Join-Path $Root 'dashboard'
 foreach ($path in @($Root, (Join-Path $Root 'data'), $dir, $P.Config, $P.Keys, $P.Logs, $P.OwnerKey, $P.ServerJson, $P.MetaEnv)) {
     if (Test-DRReparsePoint $path) { throw "Refusing linked path: $path" }
 }
-$files = @('dashboard.mjs','dashboard-performance.mjs','dashboard-fleet.mjs','dashboard-client.js','dashboard.html')
+$files = @('dashboard.mjs','dashboard-performance.mjs','dashboard-fleet.mjs','dashboard-worker.mjs','dashboard-client.js','dashboard.html')
 foreach ($file in $files) {
     if (-not (Test-Path -LiteralPath (Join-Path $P.App "tools\$file"))) { throw 'Update the server code before installing the dashboard.' }
 }

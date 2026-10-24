@@ -8,7 +8,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
     CleanupServer, GameserverStateForTests, Gameservers, GetRamsgateConnectionDetails, GetTrainingDojoConnectionDetails, ResetGameserversForTests,
-    Startup, StartupAndReportFailure, StartupGameserverWithArgs, UseProcessFunctionsForTests
+    Startup, StartupAndReportFailure, StartupGameserverWithArgs, UseProcessFunctionsForTests, ShutdownGameservers,
 } from "../src/controllers/gameservers";
 import { HandleMatchmakingRequest } from "../src/controllers/matchmaker";
 import { RunWatchdog } from "../src/controllers/watchdog";
@@ -27,17 +27,39 @@ const HUNT_POOL = [8770, 8771, 8772, 8773, 8774, 8775];
 
 let NextPid = 41000;
 const Alive = new Set<number>();
-const Spawned: { Command: string, Args: string[], Pid: number | undefined }[] = [];
+const Spawned: { Command: string, Args: string[], Pid: number | undefined, windowsHide?: boolean, console?: string }[] = [];
 
 // A game process that starts and runs until the test "kills" it (takes its pid out of Alive)
-function FakeSpawn(Command: string, Args: string[]): ChildProcess {
+function FakeSpawn(Command: string, Args: string[], Options?: { windowsHide?: boolean, env?: NodeJS.ProcessEnv }): ChildProcess {
     const Child = new EventEmitter() as any;
     Child.pid = NextPid++;
     Child.unref = () => {};
     Alive.add(Child.pid);
+    Spawned.push({ Command, Args, Pid: Child.pid, windowsHide: Options?.windowsHide, console: Options?.env?.DR_SHOW_CONSOLE });
+    return Child as ChildProcess;
+}
+
+function KillableFakeSpawn(Command: string, Args: string[]): ChildProcess {
+    const Child = new EventEmitter() as any;
+    Child.pid = NextPid++;
+    Child.exitCode = null;
+    Child.signalCode = null;
+    Child.killed = false;
+    Child.unref = () => {};
+    Child.kill = (Signal = "SIGTERM") => {
+        if(Child.exitCode !== null || Child.signalCode !== null)return false;
+        Child.killed = true;
+        Child.signalCode = Signal;
+        Alive.delete(Child.pid);
+        process.nextTick(() => Child.emit("exit", null, Signal));
+        return true;
+    };
+    Alive.add(Child.pid);
     Spawned.push({ Command, Args, Pid: Child.pid });
     return Child as ChildProcess;
 }
+
+
 
 // What Node does for a binary that is not there: no pid, and an "error" event right after
 function FailingSpawn(Command: string, Args: string[]): ChildProcess {
@@ -60,8 +82,8 @@ for(const Level of ["fatal", "error", "warn", "info"] as const){
 }
 
 async function WaitFor(Condition: () => boolean){
-    for(let i = 0; i < 200 && !Condition(); i++){
-        await new Promise((Resolve) => setImmediate(Resolve));
+    for(const Deadline = Date.now() + 5000; Date.now() < Deadline && !Condition();){
+        await new Promise((Resolve) => setTimeout(Resolve, 10));
     }
 
     assert.ok(Condition(), "timed out waiting");
@@ -89,12 +111,63 @@ after(() => {
 });
 
 describe("Ramsgate", () => {
+    it('preserves legacy server visibility unless Deploy explicitly hides or shows consoles', async () => {
+        const original = process.env.DR_SHOW_CONSOLE;
+        try {
+            for (const diagnostic of [undefined, '0', '1', 'invalid']) {
+                if (diagnostic === undefined) delete process.env.DR_SHOW_CONSOLE;
+                else process.env.DR_SHOW_CONSOLE = diagnostic;
+                ResetGameserversForTests();
+                Spawned.length = 0;
+                await Startup();
+                await GetTrainingDojoConnectionDetails();
+                await StartupGameserverWithArgs(TUTORIAL_ARGS);
+                assert.equal(Spawned.length, 3);
+                for (const [index, child] of Spawned.entries()) {
+                    const expected = diagnostic === '0' ? true : diagnostic === '1' ? false : index === 2;
+                    assert.equal(child.windowsHide, expected);
+                    assert.equal(child.console, diagnostic);
+                }
+            }
+        } finally {
+            if (original === undefined) delete process.env.DR_SHOW_CONSOLE;
+            else process.env.DR_SHOW_CONSOLE = original;
+        }
+    });
+    it('hard primary capacity excludes Ramsgate and dojo and admits only one concurrent last slot', async()=>{
+        await Startup(); await GetTrainingDojoConnectionDetails();
+        process.env.MAX_LOCAL_HUNTS='1';
+        try {
+            const results=await Promise.allSettled(Array.from({length:8},()=>StartupGameserverWithArgs(TUTORIAL_ARGS)));
+            assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+            assert.equal(Spawned.length,3);
+            assert.equal(Gameservers.filter(s=>!s.isRamsgate&&!s.isTrainingDojo).length,1);
+        } finally {delete process.env.MAX_LOCAL_HUNTS;}
+    });
+    it('worker limits pending launches to two and running hunts to three',async()=>{
+        process.env.HUNT_WORKER='1'; process.env.MAX_HUNTS='3'; process.env.MAX_PENDING_HUNTS='2';
+        try {
+            await Startup();
+            const results=await Promise.allSettled(Array.from({length:8},()=>StartupGameserverWithArgs(TUTORIAL_ARGS)));
+            assert.equal(results.filter(r=>r.status==='fulfilled').length,2, 'only two launches may be pending at once');
+            assert.equal(results.filter(r=>r.status==='rejected').length,6);
+            for (const result of results) {
+                if (result.status === 'rejected') assert.match(String(result.reason), /capacity unavailable: hunts/);
+            }
+            assert.equal(Spawned.length,2);
+            // Once the burst has spawned, the worker still has its third running slot.
+            await StartupGameserverWithArgs(TUTORIAL_ARGS);
+            assert.equal(Spawned.length,3);
+            await assert.rejects(StartupGameserverWithArgs(TUTORIAL_ARGS), /capacity unavailable: hunts/);
+            assert.equal(Spawned.length,3, 'a full worker must not spawn a fourth hunt');
+        } finally {delete process.env.HUNT_WORKER;delete process.env.MAX_HUNTS;delete process.env.MAX_PENDING_HUNTS;}
+    });
     it('low memory blocks new worlds before spawn without consuming hunt ports or stopping Ramsgate', async () => {
         await Startup();
         process.env.GAMESERVER_MEMORY_GUARD = '1';
         process.env.GAMESERVER_MIN_FREE_MB = '999999999';
         try {
-            assert.deepEqual(await GetRamsgateConnectionDetails(), {host: '127.0.0.1', port: 8777});
+            assert.deepEqual(await GetRamsgateConnectionDetails(), { host: '127.0.0.1', port: 8777, sessionId: GameserverStateForTests().Ramsgate!.id });
             await assert.rejects(GetTrainingDojoConnectionDetails(), /capacity unavailable: memory/);
             await assert.rejects(StartupGameserverWithArgs(TUTORIAL_ARGS), /capacity unavailable: memory/);
             assert.equal(Spawned.length, 1);
@@ -120,8 +193,8 @@ describe("Ramsgate", () => {
         assert.equal(Spawned[0].Args[1], "8777");
         assert.equal(Spawned[0].Args[2], "/Game/Maps/ramsgate/ramsgate_01_persistent");
         assert.deepEqual(GameserverStateForTests().FreePorts, HUNT_POOL);
-        assert.deepEqual(await GetRamsgateConnectionDetails(), { host: "127.0.0.1", port: 8777 });
-        assert.deepEqual(await HandleMatchmakingRequest("CITY", "", "ShatteredIsles_ReturnToRamsgate", undefined), { host: "127.0.0.1", port: 8777 });
+        assert.deepEqual(await GetRamsgateConnectionDetails(), { host: '127.0.0.1', port: 8777, sessionId: GameserverStateForTests().Ramsgate!.id });
+        assert.deepEqual(await HandleMatchmakingRequest("CITY", "", "ShatteredIsles_ReturnToRamsgate", undefined), { host: '127.0.0.1', port: 8777, sessionId: GameserverStateForTests().Ramsgate!.id });
         assert.equal(Spawned.length, 1);
     });
 
@@ -138,7 +211,7 @@ describe("Ramsgate", () => {
         assert.deepEqual(Gameservers.map((Server) => Server.processId), [Second.processId], "the dead record is gone");
 
         // Upstream kept the dead record: the liveness check would have started a third process here
-        assert.deepEqual(await GetRamsgateConnectionDetails(), { host: "127.0.0.1", port: 8777 });
+        assert.deepEqual(await GetRamsgateConnectionDetails(), { host: '127.0.0.1', port: 8777, sessionId: GameserverStateForTests().Ramsgate!.id });
         assert.equal(Spawned.length, 2);
     });
 
@@ -146,7 +219,7 @@ describe("Ramsgate", () => {
         await Startup();
         Kill(GameserverStateForTests().Ramsgate!.processId);
 
-        assert.deepEqual(await HandleMatchmakingRequest("CITY", "", "ShatteredIsles_ReturnToRamsgate", undefined), { host: "127.0.0.1", port: 8777 });
+        assert.deepEqual(await HandleMatchmakingRequest("CITY", "", "ShatteredIsles_ReturnToRamsgate", undefined), { host: '127.0.0.1', port: 8777, sessionId: GameserverStateForTests().Ramsgate!.id });
         assert.equal(Spawned.length, 2);
         assert.ok(Logged.includes("warn: Ramsgate is not running any more: starting it again before sending anyone there"));
         assert.equal(Gameservers.length, 1);
@@ -192,7 +265,7 @@ describe("Ramsgate", () => {
         const Dead = GameserverStateForTests().Ramsgate!;
         Kill(Dead.processId);
 
-        assert.deepEqual(await GetRamsgateConnectionDetails(), { host: "127.0.0.1", port: 8777 });
+        assert.deepEqual(await GetRamsgateConnectionDetails(), { host: '127.0.0.1', port: 8777, sessionId: GameserverStateForTests().Ramsgate!.id });
         assert.equal(Spawned.length, 1, "no liveness restart");
         assert.equal(GameserverStateForTests().Ramsgate, Dead);
 
@@ -212,6 +285,21 @@ describe("Ramsgate", () => {
 });
 
 describe("the Training Dojo", () => {
+    it("stays stopped after cleanup and starts once on the next concurrent requests", async () => {
+        await Startup();
+        await GetTrainingDojoConnectionDetails();
+        const dead = GameserverStateForTests().Dojo!;
+        Kill(dead.processId);
+        await CleanupServer(dead);
+        await RunWatchdog();
+        assert.equal(Spawned.length, 2);
+        assert.equal(GameserverStateForTests().Dojo, undefined);
+        assert.equal(Gameservers.includes(dead), false);
+        await Promise.all([GetTrainingDojoConnectionDetails(), GetTrainingDojoConnectionDetails()]);
+        assert.equal(Spawned.length, 3);
+        assert.notEqual(GameserverStateForTests().Dojo!.processId, dead.processId);
+    });
+
     it("starts on first use, once for requests that arrive together, and again after its process ended", async () => {
         await Startup();
 
@@ -324,6 +412,81 @@ describe("a game binary that cannot be started", () => {
         finally{
             Listening.closeAllConnections();
             await new Promise<void>((Resolve) => Listening.close(() => Resolve()));
+        }
+    });
+
+});
+
+describe("shutdown", () => {
+    it("shutdown stops Deploy-owned game servers without restarting Ramsgate", async () => {
+        UseProcessFunctionsForTests({ Spawn: KillableFakeSpawn, IsAlive, IsPortBound: async () => false });
+        process.env.RAMSGATE_POOL = "1";
+
+        try {
+            await Startup();
+            await GetRamsgateConnectionDetails();
+            await StartupGameserverWithArgs(TUTORIAL_ARGS);
+
+            const Pids = Gameservers.map(Server => Server.processId);
+            const SpawnCount = Spawned.length;
+
+            assert.equal(Pids.length, 2);
+            assert.ok(Pids.every(Pid => Alive.has(Pid)));
+
+            await ShutdownGameservers();
+
+            assert.ok(Pids.every(Pid => !Alive.has(Pid)));
+            assert.equal(Gameservers.length, 0);
+            assert.equal(Spawned.length, SpawnCount, "shutdown must not restart Ramsgate");
+        } finally {
+            process.env.RAMSGATE_POOL = "0";
+        }
+    });
+
+    it("shutdown interrupts an in-flight startup and prevents new game servers", async () => {
+        UseProcessFunctionsForTests({
+            Spawn: KillableFakeSpawn,
+            IsAlive,
+            IsPortBound: async () => false
+        });
+
+        process.env.RAMSGATE_POOL = "0";
+
+        const PreviousExitCode = process.exitCode;
+        process.env.GAMESERVER_STARTUP_GRACE_MS = "5000";
+
+        try {
+            const Boot = StartupAndReportFailure();
+
+            await WaitFor(() => Spawned.length === 1);
+
+            const RamsgatePid = Spawned[0].Pid!;
+            assert.ok(Alive.has(RamsgatePid), "Ramsgate is still starting");
+
+            await ShutdownGameservers();
+            await Boot;
+
+            assert.equal(Alive.has(RamsgatePid), false);
+            assert.equal(Gameservers.length, 0);
+            assert.equal(
+                process.exitCode,
+                PreviousExitCode,
+                "an intentional shutdown is not a startup failure",
+            );
+
+            await assert.rejects(
+                StartupGameserverWithArgs(TUTORIAL_ARGS),
+                /Deploy service is shutting down/,
+            );
+
+            assert.equal(
+                Spawned.length,
+                1,
+                "no game server may spawn after shutdown begins",
+            );
+        } finally {
+            process.env.GAMESERVER_STARTUP_GRACE_MS = "0";
+            process.env.RAMSGATE_POOL = "0";
         }
     });
 });

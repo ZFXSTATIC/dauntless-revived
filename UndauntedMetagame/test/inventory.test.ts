@@ -2,7 +2,7 @@ import { RemoveTestDb } from "./setup";
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { GetDb } from "../src/db";
-import { ApplyStackedChanges, GetTransactionDedupeKey, HashTransactionRequest, InventoryInsufficientError, IsOverspendRefused, ParseStackQuantity, RunInventoryTransaction } from "../src/controllers/inventory";
+import { ApplyStackedChanges, GetTransactionDedupeKey, HashTransactionRequest, InventoryInsufficientError, IsOverspendRefused, ParseStackQuantity, RunInventoryTransaction, SetDailyTokensOnce } from "../src/controllers/inventory";
 import { Count, MakePlayer, ReadStacks, StackQuantity } from "./helpers";
 
 after(() => RemoveTestDb(() => GetDb().$client.close()));
@@ -311,5 +311,57 @@ describe("RunInventoryTransaction", () => {
 
         assert.throws(() => GetDb().$client.prepare("update inventorylog set quantityChange = 99").run(), /append-only/);
         assert.throws(() => GetDb().$client.prepare("delete from inventorylog").run(), /append-only/);
+    });
+});
+
+describe("Daily token top-ups", () => {
+    const Run = (UserId: string, CharacterId: string, Source: string, StackedToAdd: any[] = [], StackedToRemove: any[] = []) =>
+        RunInventoryTransaction(UserId, CharacterId, Guid(), undefined, StackedToAdd, undefined, StackedToRemove, undefined, {Caller: "gameserver", Source});
+
+    it("lands the daily patrol bonus refill on 10, whatever the game server asks for", async () => {
+        const {UserId, CharacterId} = await MakePlayer();
+
+        await Run(UserId, CharacterId, "PERIODIC_REWARD", [Stack("TOKEN_DAILY_PATROL_BONUS", 6)]);
+        assert.equal(StackQuantity(CharacterId, "TOKEN_DAILY_PATROL_BONUS"), 10);
+
+        await Run(UserId, CharacterId, "UnitTest", [], [Stack("TOKEN_DAILY_PATROL_BONUS", 7)]);
+        await Run(UserId, CharacterId, "PERIODIC_REWARD", [Stack("TOKEN_DAILY_PATROL_BONUS", 3)]);
+        assert.equal(StackQuantity(CharacterId, "TOKEN_DAILY_PATROL_BONUS"), 10);
+    });
+
+    it("lands bounty token grants on 6 and never above it", async () => {
+        const {UserId, CharacterId} = await MakePlayer();
+
+        await Run(UserId, CharacterId, "UBountyComponent::ServerInitializeBounties", [Stack("TOKEN_BOUNTY_DRAFT", 4)]);
+        assert.equal(StackQuantity(CharacterId, "TOKEN_BOUNTY_DRAFT"), 6);
+
+        await Run(UserId, CharacterId, "UBountyComponent::DailyGrant", [Stack("TOKEN_BOUNTY_DRAFT", 6)]);
+        assert.equal(StackQuantity(CharacterId, "TOKEN_BOUNTY_DRAFT"), 6);
+    });
+
+    it("does not top up other sources and refuses forged player token grants", async () => {
+        const {UserId, CharacterId} = await MakePlayer();
+
+        await Run(UserId, CharacterId, "HuntReward", [Stack("TOKEN_BOUNTY_DRAFT", 2), Stack("TOKEN_DAILY_PATROL_BONUS", 1)]);
+        await RunInventoryTransaction(UserId, CharacterId, Guid(), undefined, [Stack("TOKEN_BOUNTY_DRAFT", 3)], undefined, undefined, undefined, {Caller: "client", Source: "UBountyComponent::ServerInitializeBounties"});
+
+        assert.equal(StackQuantity(CharacterId, "TOKEN_BOUNTY_DRAFT"), 2);
+        assert.equal(StackQuantity(CharacterId, "TOKEN_DAILY_PATROL_BONUS"), 1);
+    });
+});
+
+describe("SetDailyTokensOnce", () => {
+    it("sets every character to the daily amounts once, adding missing stacks and keeping the rest", async () => {
+        const {UserId, CharacterId} = await MakePlayer();
+        await Grant(UserId, CharacterId, Guid(), [Stack("TOKEN_DAILY_PATROL_BONUS", 3), Stack("BREAK_HIDE", 7)]);
+
+        assert.ok((SetDailyTokensOnce() ?? 0) >= 1);
+        assert.equal(StackQuantity(CharacterId, "TOKEN_DAILY_PATROL_BONUS"), 10);
+        assert.equal(StackQuantity(CharacterId, "TOKEN_BOUNTY_DRAFT"), 6);
+        assert.equal(StackQuantity(CharacterId, "BREAK_HIDE"), 7);
+
+        await Grant(UserId, CharacterId, Guid(), [], [Stack("TOKEN_BOUNTY_DRAFT", 4)]);
+        assert.equal(SetDailyTokensOnce(), undefined);
+        assert.equal(StackQuantity(CharacterId, "TOKEN_BOUNTY_DRAFT"), 2);
     });
 });

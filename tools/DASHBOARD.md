@@ -99,8 +99,9 @@ upper bounds, with `>5000` for the overflow bucket. Monitoring polls are exclude
 delay is sampled at 20 ms resolution, with percentiles since monitoring started (not a rolling minute).
 No URL, body, token or player identifier is retained by this instrumentation. Database query timing
 is not yet instrumented. VPS, backend and dashboard uptimes are shown separately.
-Player counts split Ramsgate, hunts, Dojo, tutorial, menu and unknown locations. Bans display
-**not implemented** because there is no backend ban model or enforcement; no ban actions are added.
+Player counts split Ramsgate, hunts, Dojo, tutorial, menu and unknown locations. Players & accounts
+includes account bans and optional bans on observed IP addresses, with a required reason and an
+audit trail. See [moderation](../docs/setup/moderation.md) for enforcement and appeal behavior.
 
 CPU and used/total physical RAM describe the machine running the dashboard. Samples arrive every
 five seconds. The process holds at most 720 samples (one hour), shared by every open browser.
@@ -178,3 +179,13 @@ and grant the metagame service read access to that state directory/file. Do not 
 the dashboard access to bot credentials. Missing/corrupt state shows unavailable,
 not zero. Bot invites and launcher account keys are distinct; a redeemed invite is
 not automatically a Discord account link. No keys or Discord IDs are included.
+
+## Three-server fleet
+
+Set `DASHBOARD_AUS_URL=http://127.0.0.1:61122` on the main dashboard after
+forwarding the AUS worker health listener over the authenticated fleet tunnel.
+Server #2 remains Main overflow; Server #3 shows Australia resources, hunts,
+processes and backend connectivity. All three use the existing owner login.
+Fleet CPU is the arithmetic mean of fresh host percentages; RAM and hunt counts
+are summed. Missing hosts make aggregate values unavailable rather than counting
+as zero. Ramsgate and Dojo are excluded from hunt totals.

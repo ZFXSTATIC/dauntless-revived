@@ -5,11 +5,94 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parsePerformance, readPerformance } from './dashboard-performance.mjs';
+import { readFile } from 'node:fs/promises';
+import { runInNewContext } from 'node:vm';
+
+test('chart inspection selects timestamps, preserves selection on refresh and handles missing samples', async () => {
+  const source = await readFile(new URL('./dashboard-client.js', import.meta.url), 'utf8');
+  const renderer = source.slice(source.indexOf('  function graph('), source.indexOf('  function renderDiscord('));
+  const labels=[];
+  const ctx=new Proxy({measureText:()=>({width:50}),fillText:text=>labels.push(text)}, {get:(target,key)=>target[key]??(()=>{})});
+  const canvas={clientWidth:300,style:{},dataset:{},parentElement:{querySelector:()=>({textContent:'CPU · %'})},getContext:()=>ctx,setAttribute:()=>{},getBoundingClientRect:()=>({left:0})};
+  const history=[{at:'2026-10-17T01:00:00Z',cpu:12},{at:'2026-10-17T01:00:05Z',cpu:null},{at:'2026-10-17T01:00:10Z',cpu:24}];
+  const scope={el:()=>canvas,window:{devicePixelRatio:1},history};
+  runInNewContext(renderer+"\ngraph('cpu',history);",scope);
+  canvas.onpointermove({clientX:150});
+  assert.equal(canvas.dataset.selectedAt,history[1].at);
+  assert.match(labels.at(-1),/Unavailable/);
+  canvas.onkeydown({key:'ArrowRight',preventDefault(){}});
+  assert.equal(canvas.dataset.selectedAt,history[2].at);
+  runInNewContext("graph('cpu',history);",scope);
+  assert.match(labels.at(-1),/24/);
+  canvas.onkeydown({key:'Escape'});
+  assert.equal(canvas.dataset.selectedAt,undefined);
+  assert.match(labels.at(-1),/Current 24/);
+});
+
+test('fleet host without a detail panel does not interrupt dashboard unlock', async () => {
+  const source = await readFile(new URL('./dashboard-client.js', import.meta.url), 'utf8');
+  const renderer = source.slice(source.indexOf('  function renderWorker('), source.indexOf('\n  function list('));
+  assert.doesNotThrow(() => runInNewContext(renderer + "\nrenderWorker({online:true}, 'eu2');", {
+    document: {getElementById: () => null},
+  }));
+});
+
+test('optional IP bans use backend observations, ignore submitted IPs, and fail closed without an observation',async()=>{
+  const key='test-ip-moderation-owner';const writes=[];let address='203.0.113.20';
+  const server=await startDashboard({key,port:0,backend:'http://127.0.0.1:61000',fetcher:async(url,opts)=>{
+    if(opts?.method==='POST'){writes.push(JSON.parse(opts.body));return {status:200,json:async()=>({})};}
+    if(url.pathname.startsWith('/undaunted/api/Moderation/'))return {status:200,json:async()=>({addresses:address?[{address}]:[]})};
+    return {ok:true,json:async()=>({Users:[],players:[],instances:[],playersOnline:0})};
+  }});
+  try{
+    const base=`http://127.0.0.1:${server.address().port}`;
+    const send=body=>fetch(base+'/api/moderation',{method:'POST',headers:{'x-dashboard-key':key,'content-type':'application/json',origin:base},body:JSON.stringify({accountId:'UID-test',reason:'verified test',active:true,address:'198.51.100.99',...body})});
+    assert.equal((await send({includeDevice:true})).status,200);assert.equal(writes.at(-1).address,null);assert.equal(writes.at(-1).includeDevice,true);
+    assert.equal((await send({includeIp:true})).status,200);assert.equal(writes.at(-1).address,address);assert.equal(writes.at(-1).durationHours,168);assert.equal(writes.at(-1).includeIp,undefined);
+    address=null;assert.equal((await send({includeIp:true})).status,409);assert.equal(writes.length,2);
+    assert.equal((await send({includeIp:true,active:false})).status,200);assert.equal(writes.at(-1).address,null);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
+
+test('moderation history requires owner auth and bounded pagination',async()=>{
+  const key='test-history-owner-key';let reads=0;
+  const server=await startDashboard({key,port:0,backend:'http://127.0.0.1:61000',fetcher:async(url,opts)=>{
+    if(url.pathname==='/undaunted/api/ModerationLog'){reads++;assert.equal(opts.headers['x-undaunted-user-api-key'],key);return {status:200,json:async()=>({rows:[],nextOffset:null})};}
+    return {ok:true,json:async()=>({Users:[],players:[],instances:[],playersOnline:0})};
+  }});
+  try {
+    const base=`http://127.0.0.1:${server.address().port}`;
+    assert.equal((await fetch(base+'/api/moderation-log?kind=events')).status,401);
+    assert.equal((await fetch(base+'/api/moderation-log?kind=events&offset=-1',{headers:{'x-dashboard-key':key}})).status,400);
+    const response=await fetch(base+'/api/moderation-log?kind=events&offset=0',{headers:{'x-dashboard-key':key}});
+    assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(reads,1);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
+
+test('moderation writes require owner authentication and same origin and never retry',async()=>{
+  const key='test-moderation-owner-key';let writes=0;
+  const server=await startDashboard({key,port:0,backend:'http://127.0.0.1:61000',fetcher:async(url,opts)=>{
+    if(opts?.method==='POST'){writes++;assert.equal(url.pathname,'/undaunted/api/Moderation');const body=JSON.parse(opts.body);assert.equal(body.durationHours,168);assert.equal(body.address,null);return {status:200,json:async()=>({ban:{active:1},addresses:[]})};}
+    return {ok:true,json:async()=>({Users:[],players:[],instances:[],playersOnline:0})};
+  }});
+  try{
+    const base=`http://127.0.0.1:${server.address().port}`,body=JSON.stringify({accountId:'UID-test',reason:'test',active:true});
+    assert.equal((await fetch(base+'/api/moderation',{method:'POST',body})).status,401);
+    assert.equal((await fetch(base+'/api/moderation',{method:'POST',headers:{'x-dashboard-key':key,'content-type':'application/json'},body})).status,403);
+    assert.equal((await fetch(base+'/api/moderation',{method:'POST',headers:{'x-dashboard-key':key,'content-type':'application/json',origin:base},body})).status,200);
+    assert.equal(writes,1);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
 test('dashboard isolates owner data and only polls read routes', async () => {
   const routes = [];
   const key = 'test-owner-key-not-a-real-secret';
-  const server = await startDashboard({key, port: 0, backend: 'http://127.0.0.1:61000', fetcher: async url => {
+  const server = await startDashboard({key, port: 0, backend: 'http://127.0.0.1:61000', fetcher: async (url, options) => {
     routes.push(url.pathname);
+    if (url.pathname === '/gameservers') {
+      assert.equal(url.port, '61001');
+      assert.equal(options.headers, undefined);
+      return Response.json({capacity:{running:4,pending:1,limit:10,cpu:{blocked:false}}});
+    }
     return {ok: true, json: async () => url.pathname.endsWith('GetAllUsers') ? {Users: [{UserId: 'fixture', Username: 'Tester'}]} : {players: [{name: 'Tester', where: 'city'}], instances: [], playersOnline: 1, uptimeSeconds: 60, name: 'Test'} };
   }});
   try {
@@ -25,7 +108,9 @@ test('dashboard isolates owner data and only polls read routes', async () => {
     assert.equal((await fetch(base + '/api/log?name=../../secrets', {headers: {'x-dashboard-key': key}})).status, 404);
     assert.equal(data.sample.locations.city, 1);
     assert.equal(data.sample.locations.hunt, 0);
-    assert.deepEqual(routes.sort(), ['/undaunted/api/BackendHealth', '/undaunted/api/DiscordKeyStats', '/undaunted/api/GetAllUsers', '/undaunted/api/ServerStatus']);
+    assert.equal(data.fleet.totals.hunts, 4);
+    assert.equal(data.fleet.rows[0].capacity.pending, 1);
+    assert.deepEqual(routes.sort(), ['/gameservers', '/undaunted/api/BackendHealth', '/undaunted/api/DiscordKeyStats', '/undaunted/api/GetAllUsers', '/undaunted/api/ServerStatus']);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 test('redacts credential lines and caps log line count', () => {
@@ -137,4 +222,41 @@ test('account proxy strips unexpected fields, validates paging, and preserves un
     assert.equal(status.sample.requestsPerSecond, null);
     assert.match(status.sample.healthError, /BACKEND_HEALTH/);
   } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test('account recovery requires owner authentication and is never cached',async()=>{
+ const key='test-recovery-owner-key';let recovered=0;
+ const server=await startDashboard({key,port:0,backend:'http://127.0.0.1:61000',fetcher:async url=>{
+   if(url.pathname.startsWith('/undaunted/api/AccountRecovery/')){recovered++;return {status:200,json:async()=>({accountId:'UID-test',key:'fixture-login-key'})};}
+   return {ok:true,json:async()=>({Users:[],players:[],instances:[],playersOnline:0})};
+ }});
+ try {
+   const base=`http://127.0.0.1:${server.address().port}`,route='/api/account-key?accountId=UID-test';
+   assert.equal((await fetch(base+route)).status,401);assert.equal(recovered,0);
+   const response=await fetch(base+route,{headers:{'x-dashboard-key':key}});
+   assert.equal(response.headers.get('cache-control'),'no-store');assert.equal((await response.json()).key,'fixture-login-key');assert.equal(recovered,1);
+ }finally{await new Promise(resolve=>server.close(resolve));}
+});
+
+test('slow moderation completes once and account totals are cached across polls', async () => {
+  const {setTimeout: delay} = await import('node:timers/promises');
+  const key='test-owner-key-not-a-real-secret';
+  let users=0, writes=0;
+  const server=await startDashboard({key,port:0,backend:'http://127.0.0.1:61000',fetcher:async (url,options)=>{
+    if(options.method==='POST'){
+      writes++;
+      await delay(10500,undefined,{signal:options.signal});
+      return {status:200,json:async()=>({active:false})};
+    }
+    if(url.pathname.endsWith('GetAllUsers')) users++;
+    return {ok:true,json:async()=>url.pathname.endsWith('GetAllUsers')?{Users:[]}:{players:[],instances:[],playersOnline:0}};
+  }});
+  try {
+    const base='http://127.0.0.1:'+server.address().port;
+    const response=await fetch(base+'/api/moderation',{method:'POST',headers:{'x-dashboard-key':key,'content-type':'application/json',origin:base},body:JSON.stringify({accountId:'UID-fixture',active:false,reason:'test'})});
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).active,false);
+    assert.equal(writes,1);
+    assert.equal(users,1);
+  } finally {await new Promise(resolve=>server.close(resolve));}
 });

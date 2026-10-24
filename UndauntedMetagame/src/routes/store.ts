@@ -1,10 +1,25 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Router } from "express";
 import { logger } from "../logger";
 import { HasUndauntedMetagameAuth } from "../middleware/HasUndauntedMetagameAuth";
 import { GetHeldCurrencies, GetNotesForUser, OverlayHeldCurrencies } from "../controllers/store";
 import { PlayerTokenOnly } from "../middleware/PlayerAuth";
-import { CreateStorePurchase, GetStoreOffer, IsKnownStoreTag, ListStoreOffers, RedeemStorePurchase, StoreError } from "../controllers/freestore";
-import { BalanceFromInventory, StoreMode } from "../features";
+import { CreateStorePurchase, GetStoreOffer, IsAnyStoreEnabled, IsKnownStoreTag, IsStoreSkuEnabled, IsStoreTagEnabled, ListStoreOffers, RedeemStorePurchase, StoreError } from "../controllers/freestore";
+import { BalanceFromInventory } from "../features";
+import { PlayerMutationRateLimit, StoreImageRateLimit } from "../middleware/RateLimits";
+import { RamsWireOffer, RamsWireCurrency } from "../controllers/ramspricing";
+import StoreCatalog from '../vendor/store_catalog.json';
+import { GetCreatorSupport, RedeemCreatorCode } from "../controllers/creator";
+import { InventoryErrorOf } from "../controllers/inventory";
+
+
+const MainShopSkus = new Set(StoreCatalog.webstore.map(offer=>offer.id));
+function RequireRamsClient(req: any, applies: boolean){
+    if(applies && process.env.STORE_RAMS === '1' && req.query.shop_protocol !== 'rams-v1'){
+        throw new StoreError(426, 'Update the launcher to use the Rams shop');
+    }
+}
 
 export const storeRouter = Router();
 
@@ -43,17 +58,40 @@ storeRouter.post("/reconcile", HasUndauntedMetagameAuth, async (req: any, res) =
     });
 });
 
-storeRouter.get("/creator", HasUndauntedMetagameAuth, async (req: any, res) => {
-    logger.info("SupportACreator (stubbed)");
+// Native creator requests also carry their player token in X-Epic-Authorization
+// (GET) or authorization in the JSON body (POST). Never accept an account ID.
+const CreatorAuth: import("express").RequestHandler = (req, res, next) => {
+    if(req.headers.authorization === undefined){
+        const Token = req.headers["x-epic-authorization"] ?? req.body?.authorization;
+        if(typeof Token === "string" && Token.length <= 8192){
+            req.headers.authorization = /^bearer /i.test(Token) ? Token : `bearer ${Token}`;
+        }
+    }
+    return HasUndauntedMetagameAuth(req, res, next);
+};
 
-    res.status(200);
-    res.json({
-        "expirationDate": "2099-01-01T01:00:00.041Z",
-        "slug": "MROWMROW",
-        "success": true
-    });
-})
+storeRouter.get("/creator", CreatorAuth, PlayerTokenOnly, (req: any, res) => {
+    res.set("Cache-Control", "no-store").json(GetCreatorSupport(req.AuthData.userId));
+});
 
+storeRouter.post("/creator", CreatorAuth, PlayerTokenOnly, PlayerMutationRateLimit, (req: any, res) => {
+    res.set("Cache-Control", "no-store");
+    try{
+        res.json(RedeemCreatorCode(req.AuthData.userId, req.body?.slug));
+    }
+    catch(error){
+        if(error instanceof StoreError){
+            res.status(error.Status).json({success: false, message: error.message});
+        }
+        else if(InventoryErrorOf(error) !== undefined){
+            res.status(409).json({success: false, message: "Inventory could not receive the reward; try again later"});
+        }
+        else{
+            logger.error("Creator reward could not be committed");
+            res.status(500).json({success: false, message: "Could not redeem the creator code; try again later"});
+        }
+    }
+});
 storeRouter.get("/balance", HasUndauntedMetagameAuth, async (req: any, res) => {
     const UserId = req.AuthData.userId;
 
@@ -118,18 +156,34 @@ storeRouter.get("/balance", HasUndauntedMetagameAuth, async (req: any, res) => {
 
     ApplyHeldCurrencies(UserId, Sheet);
 
+    // The pilot client still indexes its purchase balance by Event01 even when
+    // Rams metadata is displayed. These are wire aliases, never separate funds.
+    if(RamsWireCurrency('event_01', UserId) === 'notes'){
+        const Rams = GetHeldCurrencies(UserId).Held.get('CURRENCY_NOTES') ?? 0;
+        Sheet.CURRENCY_NOTES = Rams;
+        Sheet.CURRENCY_EVENT_01 = Rams;
+    }
+
     res.status(200);
     res.json(Sheet);
 });
 
-// ---- The free store (roadmap 3.7, controllers/freestore.ts): only with STORE=free. ----
-// With STORE=off (the default) these routes step aside: the storefront gets the old 400 below and the
-// three purchase routes the catalogue-less 404 they always got. Every store route acts for the player
-// whose token it carries; a game server's key alone gets 403. The four routes are adapted from the
-// store routes of Harmonic's fork (github.com/Harmonicrain/Undaunted 895f7c7, routes/store.ts).
+// ---- Store purchase service. ----
+// STORE=free controls the ordinary cosmetic webstore. Lady Luck and Middleman share the recovered
+// token/notification protocol but are independently gated by TRIALS_STORE and MIDDLEMAN_STORE.
+// This keeps the old storefront disabled without accidentally disabling gameplay vendors.
 
-function StoreOn(req: any, res: any, next: any){
-    next(StoreMode() === "free" ? undefined : "route");
+function StoreListOn(req: any, res: any, next: any){
+    const Tag = req.query.requiredTags;
+    next((typeof Tag === "string" ? IsStoreTagEnabled(Tag) : IsAnyStoreEnabled()) ? undefined : "route");
+}
+
+function StoreSkuOn(req: any, res: any, next: any){
+    next(IsStoreSkuEnabled(req.params.skuId) ? undefined : "route");
+}
+
+function StoreAnyOn(req: any, res: any, next: any){
+    next(IsAnyStoreEnabled() ? undefined : "route");
 }
 
 function SendStoreError(res: any, error: unknown, What: string){
@@ -145,8 +199,44 @@ function SendStoreError(res: any, error: unknown, What: string){
     res.json({ code: "500", message: "Store request failed" });
 }
 
+// ---- Store offer images. ----
+// The 1.4.4 client downloads an offer's picture from images.standard / images.feature (its ImageURL);
+// retail served them from Phoenix's CDN. store-images/ holds the items' own 1.4.4 icons, one PNG per
+// catalog id (lower case), extracted from the game's textures. An offer whose first item has one gets
+// its URL on this server, built from the host the client called so it works behind the relay too.
+const STORE_IMAGES_DIR = path.join(process.cwd(), "store-images");
+let StoreImageFiles: Set<string> | undefined;
+
+function StoreImageFor(Offer: any){
+    StoreImageFiles ??= new Set(fs.existsSync(STORE_IMAGES_DIR) ? fs.readdirSync(STORE_IMAGES_DIR) : []);
+    const CatalogId = Offer?.items?.[0]?.catalogId;
+    const File = typeof CatalogId === "string" ? `${CatalogId.toLowerCase()}.png` : undefined;
+    return File != undefined && StoreImageFiles.has(File) ? File : undefined;
+}
+
+function WithStoreImage(req: any, Offer: any){
+    const File = StoreImageFor(Offer);
+    if(File == undefined) return Offer;
+
+    const Url = `${req.protocol}://${req.get("host")}/store-images/${File}`;
+    return {...Offer, images: {...(Offer.images ?? {}), standard: Url, feature: Url}};
+}
+
+storeRouter.get("/store-images/:file", StoreImageRateLimit, (req, res) => {
+    const File = req.params.file;
+
+    if(typeof File !== "string" || !/^[a-z0-9_]+\.png$/.test(File) || !StoreImageFor({items: [{catalogId: File.slice(0, -4)}]})){
+        res.status(404);
+        res.send();
+        return;
+    }
+
+    res.set("Cache-Control", "public, max-age=86400");
+    res.sendFile(File, {root: STORE_IMAGES_DIR, dotfiles: 'deny'});
+});
+
 // StoreGetItemByTagEndpoint: a bare array of offers
-storeRouter.get("/product/skus/public", StoreOn, HasUndauntedMetagameAuth, PlayerTokenOnly, (req: any, res) => {
+storeRouter.get("/product/skus/public", StoreListOn, HasUndauntedMetagameAuth, PlayerTokenOnly, (req: any, res) => {
     const RequiredTags = req.query.requiredTags;
 
     if(typeof RequiredTags !== "string" || RequiredTags.length === 0){
@@ -157,6 +247,7 @@ storeRouter.get("/product/skus/public", StoreOn, HasUndauntedMetagameAuth, Playe
     }
 
     try{
+        RequireRamsClient(req, RequiredTags === 'webstore');
         const Offers = ListStoreOffers(req.AuthData.userId, RequiredTags);
 
         if(IsKnownStoreTag(RequiredTags)){
@@ -167,7 +258,7 @@ storeRouter.get("/product/skus/public", StoreOn, HasUndauntedMetagameAuth, Playe
         }
 
         res.status(200);
-        res.json(Offers);
+        res.json(Offers.map((Offer: any) => WithStoreImage(req, RamsWireOffer(Offer, req.AuthData.userId))));
     }
     catch(error){
         SendStoreError(res, error, `list ${RequiredTags}`);
@@ -175,10 +266,11 @@ storeRouter.get("/product/skus/public", StoreOn, HasUndauntedMetagameAuth, Playe
 });
 
 // StoreGetItemByIdEndpoint: one offer, for the purchase dialog
-storeRouter.get("/product/sku/:skuId", StoreOn, HasUndauntedMetagameAuth, PlayerTokenOnly, (req: any, res) => {
+storeRouter.get("/product/sku/:skuId", StoreSkuOn, HasUndauntedMetagameAuth, PlayerTokenOnly, (req: any, res) => {
     try{
         res.status(200);
-        res.json(GetStoreOffer(req.AuthData.userId, req.params.skuId));
+        RequireRamsClient(req, MainShopSkus.has(req.params.skuId));
+        res.json(WithStoreImage(req, RamsWireOffer(GetStoreOffer(req.AuthData.userId, req.params.skuId), req.AuthData.userId)));
     }
     catch(error){
         SendStoreError(res, error, `offer ${req.params.skuId}`);
@@ -186,10 +278,11 @@ storeRouter.get("/product/sku/:skuId", StoreOn, HasUndauntedMetagameAuth, Player
 });
 
 // StorePurchaseItemEndpoint: {purchaseToken}. Whatever else the request carries is ignored.
-storeRouter.get("/token/:currency/:skuId", StoreOn, HasUndauntedMetagameAuth, PlayerTokenOnly, (req: any, res) => {
+storeRouter.get("/token/:currency/:skuId", StoreSkuOn, HasUndauntedMetagameAuth, PlayerTokenOnly, PlayerMutationRateLimit, (req: any, res) => {
     try{
         res.status(200);
-        res.json(CreateStorePurchase(req.AuthData.userId, req.params.currency, req.params.skuId));
+        RequireRamsClient(req, MainShopSkus.has(req.params.skuId));
+        res.json(CreateStorePurchase(req.AuthData.userId, RamsWireCurrency(req.params.currency, req.AuthData.userId), req.params.skuId));
     }
     catch(error){
         SendStoreError(res, error, `token for ${req.params.skuId}`);
@@ -197,9 +290,10 @@ storeRouter.get("/token/:currency/:skuId", StoreOn, HasUndauntedMetagameAuth, Pl
 });
 
 // StorePurchaseItemConfirmEndpoint: redeems the token; 204, also for a token already redeemed
-storeRouter.post("/notification/:currency", StoreOn, HasUndauntedMetagameAuth, PlayerTokenOnly, (req: any, res) => {
+storeRouter.post("/notification/:currency", StoreAnyOn, HasUndauntedMetagameAuth, PlayerTokenOnly, PlayerMutationRateLimit, (req: any, res) => {
     try{
-        RedeemStorePurchase(req.AuthData.userId, req.params.currency, req.query.token);
+        RequireRamsClient(req, ['notes','rams','event01','event_01'].includes(req.params.currency.toLowerCase()));
+        RedeemStorePurchase(req.AuthData.userId, RamsWireCurrency(req.params.currency, req.AuthData.userId), req.query.token);
         res.status(204);
         res.send();
     }
@@ -222,3 +316,4 @@ storeRouter.get("/product/skus/public", HasUndauntedMetagameAuth, async (req: an
         message: "The store is not available on Dauntless Revived yet."
     });
 });
+

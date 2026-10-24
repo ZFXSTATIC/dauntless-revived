@@ -9,6 +9,7 @@ export type Config = {
     metagameUrl: string;
     gameDir: string;
     manifestPath: string;
+    downloadBaseUrl?: string;
     brandingDir: string | undefined;
     newsFile: string | undefined;
     maxStreamsPerAccount: number;
@@ -92,6 +93,16 @@ export function LoadConfig(Env: NodeJS.ProcessEnv = process.env): Config {
         throw new Error("CONTENT_GAME_DIR is not set (the folder that contains Archon\\)");
     }
 
+    const DownloadBase = Optional(Env, "CONTENT_DOWNLOAD_BASE_URL");
+    let DownloadBaseUrl: string | undefined;
+    if(DownloadBase){
+        const Url = new URL(DownloadBase);
+        if(Url.protocol !== "https:" || Url.username || Url.password || Url.search || Url.hash){
+            throw new Error("CONTENT_DOWNLOAD_BASE_URL must be HTTPS without credentials, query or fragment");
+        }
+        DownloadBaseUrl = Url.href.replace(/\/+$/, "") + "/";
+    }
+
     return {
         port: Port,
         bindHosts: BindHosts,
@@ -99,6 +110,7 @@ export function LoadConfig(Env: NodeJS.ProcessEnv = process.env): Config {
         metagameUrl: MetagameUrl,
         gameDir: path.resolve(GameDir),
         manifestPath: path.resolve(Optional(Env, "CONTENT_MANIFEST") ?? DefaultManifestPath()),
+        downloadBaseUrl: DownloadBaseUrl,
         brandingDir: Optional(Env, "CONTENT_BRANDING_DIR") === undefined ? undefined : path.resolve(Optional(Env, "CONTENT_BRANDING_DIR")!),
         newsFile: Optional(Env, "CONTENT_NEWS_FILE") === undefined ? undefined : path.resolve(Optional(Env, "CONTENT_NEWS_FILE")!),
         maxStreamsPerAccount: Int(Env, "CONTENT_MAX_STREAMS_PER_ACCOUNT", 6, 1, 64),

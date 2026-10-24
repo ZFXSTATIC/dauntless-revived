@@ -1,0 +1,62 @@
+diff --git a/C:/dr/shop-production-audit/live-bot-keys.mjs b/C:/dr/keybot-recovery-20261017/keys.mjs
+index a0e27a4..f2d483b 100644
+--- a/C:/dr/shop-production-audit/live-bot-keys.mjs
++++ b/C:/dr/keybot-recovery-20261017/keys.mjs
+@@ -1,6 +1,7 @@
+ import { randomBytes } from 'node:crypto';
+ import { mkdir, readFile, open, rename, unlink } from 'node:fs/promises';
+ import { dirname } from 'node:path';
++import { setTimeout as renameDelay } from 'node:timers/promises';
+ import { linkInput } from './link-input.mjs';
+ 
+ export async function loadState(file) {
+@@ -32,7 +33,7 @@ export async function loadState(file) {
+ 
+ // Write a private, flushed snapshot, then atomically replace the destination.
+ // A failed write never truncates the existing database.
+-export async function saveState(file, state) {
++export async function saveState(file, state, {platform = process.platform, replace = rename, sleep = renameDelay} = {}) {
+   await mkdir(dirname(file), {recursive: true});
+   const temporary = `${file}.${randomBytes(12).toString('hex')}.tmp`;
+   let handle;
+@@ -42,7 +43,15 @@ export async function saveState(file, state) {
+     await handle.sync();
+     await handle.close();
+     handle = undefined;
+-    await rename(temporary, file);
++    // Windows scanners may briefly lock the destination. Retry only the atomic
++    // replace of this already-flushed snapshot; never unlink the old state.
++    for (let attempt = 0; ; ++attempt) {
++      try { await replace(temporary, file); break; }
++      catch (error) {
++        if (platform !== 'win32' || !['EPERM','EACCES','EBUSY'].includes(error.code) || attempt >= 6) throw error;
++        await sleep(50 * 2 ** attempt);
++      }
++    }
+   } finally {
+     await handle?.close();
+     await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });
+@@ -53,11 +62,21 @@ export function backend(base, key, request = fetch) {
+   const url = new URL(base);
+   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('Metagame must use loopback HTTP');
+   async function api(path, body, method = body ? 'POST' : 'GET') {
+-    const response = await request(new URL(`/undaunted/api/${path}`, url), {
++    const options = {
+       method, redirect: 'error', signal: AbortSignal.timeout(15000),
+       headers: {'x-undaunted-user-api-key': key, 'content-type': 'application/json'},
+       body: body ? JSON.stringify(body) : undefined,
+-    });
++    };
++    const endpoint = new URL(`/undaunted/api/${path}`, url);
++    let response;
++    try { response = await request(endpoint, options); }
++    catch (error) {
++      // A reset keep-alive connection is safe to retry for reads only. Never
++      // repeat an ambiguous invite creation, linking or deletion here.
++      if (method !== 'GET' || error.name !== 'TypeError' || options.signal.aborted) throw error;
++      await new Promise(resolve => setTimeout(resolve, 250));
++      response = await request(endpoint, options);
++    }
+     if (method === 'DELETE' && response.status === 404) return;
+     if (!response.ok) throw Object.assign(new Error('Metagame request failed'), {status: response.status});
+     return method === 'DELETE' || path === 'RegisterInviteCode' ? undefined : response.json();

@@ -26,7 +26,7 @@ export async function startWorkerHealth({port=61111,root=process.cwd(),allowlist
   let prior=cpuTimes(), priorProcesses, processInfo=null, sample=null, busy=false, collecting=false;
   const eventLoopStart=performance.now();
   async function probe(url, headers) {
-    try { const r=await fetcher(url,{headers,redirect:'error',signal:AbortSignal.timeout(2000)}); if(!r.ok)return null; return await r.json(); }catch{return null;}
+    try { const r=await fetcher(url,{headers,redirect:'error',signal:AbortSignal.timeout(8000)}); if(!r.ok)return null; return await r.json(); }catch{return null;}
   }
   async function poll() {
     if(busy)return; busy=true;
@@ -40,6 +40,8 @@ export async function startWorkerHealth({port=61111,root=process.cwd(),allowlist
         logicalCpus:os.cpus().length,ramUsedMB:(os.totalmem()-os.freemem())/1048576,ramTotalMB:os.totalmem()/1048576,
         diskFreeGB:disk ? disk.bavail*disk.bsize/1073741824:null,hostUptimeSeconds:os.uptime(),monitorUptimeSeconds:(performance.now()-eventLoopStart)/1000,
         services:{deploy:Array.isArray(deploy?.servers),backend:!!backend,allowlist:!!allowlist},
+        capacity:Array.isArray(deploy?.servers) ? deploy.capacity ?? null : null,
+        capacitySampleAt:Array.isArray(deploy?.servers) && deploy.capacity ? new Date().toISOString() : null,
         firewall:allowlist ? {enabled:allowlist.lastApply?.enabled ?? false,ok:allowlist.lastApply?.ok ?? null,addresses:allowlist.entries?.length ?? 0,pending:allowlist.pending,ports:allowlist.ports}:null,
         hunts:Array.isArray(deploy?.servers) ? deploy.servers.map(s=>({id:s.id,port:s.port,kind:s.kind,map:s.map,huntId:s.huntId,expectedPlayers:s.expectedPlayers?.length ?? 0,startedAt:s.startedAt})):[],
         processes:processInfo,monitorMemoryMB:process.memoryUsage().rss/1048576};

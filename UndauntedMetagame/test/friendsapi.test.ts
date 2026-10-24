@@ -397,10 +397,21 @@ function StatusTexts(Reply: any){
 
 describe("GET /product/skus/public", () => {
     it("tells the player the store is not available, in plain English", async () => {
-        const Reply = await Call("GET", "/product/skus/public", { token: Friend.token });
+        // With every store off; Lady Luck and the Middleman are on by default
+        const Old = [process.env.TRIALS_STORE, process.env.MIDDLEMAN_STORE];
+        process.env.TRIALS_STORE = "off";
+        process.env.MIDDLEMAN_STORE = "off";
+        try{
+            const Reply = await Call("GET", "/product/skus/public", { token: Friend.token });
 
-        assert.equal(Reply.status, 400);
-        assert.deepEqual(Reply.json, { code: "400", message: "The store is not available on Dauntless Revived yet." });
+            assert.equal(Reply.status, 400);
+            assert.deepEqual(Reply.json, { code: "400", message: "The store is not available on Dauntless Revived yet." });
+        }
+        finally{
+            for(const [Name, Value] of [["TRIALS_STORE", Old[0]], ["MIDDLEMAN_STORE", Old[1]]] as const){
+                if(Value === undefined) delete process.env[Name]; else process.env[Name] = Value;
+            }
+        }
     });
 });
 

@@ -1,0 +1,88 @@
+{
+  "_comment": "Weekly Trials pool: elemental variants (the _alpha blueprint) that also have a Heroic hunt of that same variant. Each entry lists the cooked Trial rows whose Hard and Elite versions both use that blueprint. Base behemoths are never listed. Keep identical in UndauntedMetagame and UndauntedDeployServer.",
+  "behemoths": {
+    "bullseye_alpha": [
+      "003",
+      "016",
+      "029",
+      "042",
+      "062",
+      "087"
+    ],
+    "electroquill_alpha": [
+      "001",
+      "014",
+      "027",
+      "040"
+    ],
+    "host_alpha": [
+      "045",
+      "055",
+      "071"
+    ],
+    "lerawr_alpha": [
+      "004",
+      "017",
+      "030",
+      "047",
+      "064",
+      "088"
+    ],
+    "mcbeaver_alpha": [
+      "013",
+      "026",
+      "039",
+      "060",
+      "077"
+    ],
+    "mcrollin_alpha": [
+      "012",
+      "025",
+      "038",
+      "075"
+    ],
+    "moonface_alpha": [
+      "010",
+      "023",
+      "036",
+      "056",
+      "073"
+    ],
+    "scissors_alpha": [
+      "006",
+      "019",
+      "032",
+      "050",
+      "067",
+      "081"
+    ],
+    "shockmane_alpha": [
+      "044",
+      "052",
+      "069",
+      "079"
+    ],
+    "snowflake_alpha": [
+      "005",
+      "018",
+      "031",
+      "048",
+      "065",
+      "080"
+    ],
+    "sq_rock_alpha": [
+      "011",
+      "024",
+      "037",
+      "057",
+      "074"
+    ],
+    "sq_sally_alpha": [
+      "009",
+      "022",
+      "035",
+      "054",
+      "072"
+    ]
+  }
+}

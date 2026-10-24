@@ -1,0 +1,12 @@
+PS5 Button Icons and Controls - Zacksly
+Licensed under CC BY 3.0 - https://zacksly.itch.io
+License text: https://creativecommons.org/licenses/by/3.0/
+
+The button prompts shown in the game with a DualSense connected are based on the pack's
+"Buttons Full Solid" white icons by Zacksly. They were modified for Dauntless Revived: the symbol
+is filled dark, a thin dark rim is added so they read on light backgrounds, and they are resized
+to 64 x 64.
+
+"DualSense Layout.png" is based on the pack's "Controller Images / Solid Color" DualSense by
+Zacksly. It was modified for Dauntless Revived: placed on the Controls screen's layout, with the
+screen's label boxes and group lines drawn around it.

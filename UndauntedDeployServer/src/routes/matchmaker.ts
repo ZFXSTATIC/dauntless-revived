@@ -23,6 +23,8 @@ matchmakingRouter.post("/handle-matchmaking-for-player", express.json(), async (
     const GameArgs = Body.GameArgs;
     const HuntId = Body.HuntId;
     const ExpectedPlayers = Body.ExpectedPlayers;
+    const Region = Body.Region ?? 'main';
+    if (!['main', 'aus', 'ger', 'us', 'mixed'].includes(Region)) { res.status(400).json({error:'invalid_region'}); return; }
 
     const BadRequest = CheckMatchmakingRequest(GameMode, GameArgs, HuntId, ExpectedPlayers);
 
@@ -37,7 +39,7 @@ matchmakingRouter.post("/handle-matchmaking-for-player", express.json(), async (
     let MatchmakingResult;
 
     try{
-        MatchmakingResult = await HandleMatchmakingRequest(GameMode, GameArgs, HuntId, ExpectedPlayers);
+        MatchmakingResult = await HandleMatchmakingRequest(GameMode, GameArgs, HuntId, ExpectedPlayers, Region, Body.Overflow === true);
     }
     catch(error){
         if (error instanceof CapacityUnavailable) {
