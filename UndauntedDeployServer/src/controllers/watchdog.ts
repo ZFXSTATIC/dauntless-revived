@@ -1,6 +1,6 @@
 import { logger } from "../logger";
 import { Gameservers, CleanupServer, IsGameserverAlive, StopExpiredHunt } from "./gameservers";
-import { NativeOccupancy } from './nativeoccupancy';
+import { NativeReportedOccupancy } from './nativeoccupancy';
 import { HuntLifetimeFromEnv } from './huntlifetime';
 const Lifetime=HuntLifetimeFromEnv();
 
@@ -26,7 +26,7 @@ export async function RunWatchdog(){
             cleanup.push(CleanupServer(Gameserver).catch((error) => logger.error(`Could not restart the game server on port ${Gameserver.port}: ${error instanceof Error ? error.message : String(error)}`)));
         }
         else {
-            const reason=Lifetime.reason(Gameserver,NativeOccupancy(Gameserver.processId,Gameserver.startTime));
+            const reason=Lifetime.reason(Gameserver,NativeReportedOccupancy(Gameserver.processId,Gameserver.startTime));
             if(reason){
                 try {if(StopExpiredHunt(Gameserver))logger.warn({port:Gameserver.port,reason,ageMinutes:(Date.now()-Gameserver.startTime.getTime())/60000},'Hunt lifetime limit: stopping instance');}
                 catch(error){logger.error({error,port:Gameserver.port},'Could not stop expired hunt');}
