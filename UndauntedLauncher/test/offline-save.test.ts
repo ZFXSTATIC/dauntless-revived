@@ -164,7 +164,7 @@ test("unknown, future, incomplete and structurally inconsistent migration claims
         "UPDATE __drizzle_migrations SET hash='unknown' WHERE created_at=(SELECT min(created_at) FROM __drizzle_migrations)",
         "INSERT INTO __drizzle_migrations(hash,created_at) VALUES ('future',9999999999999)",
         "DELETE FROM __drizzle_migrations WHERE created_at=(SELECT min(created_at) FROM __drizzle_migrations)",
-        "DELETE FROM __drizzle_migrations WHERE created_at=(SELECT max(created_at) FROM __drizzle_migrations)",
+        "DELETE FROM __drizzle_migrations WHERE created_at=(SELECT max(created_at) FROM __drizzle_migrations WHERE created_at<(SELECT max(created_at) FROM __drizzle_migrations))",
         "DROP TABLE recoveryevents",
     ];
     for (const sql of mutations) {
