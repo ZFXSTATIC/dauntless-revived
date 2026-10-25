@@ -194,7 +194,7 @@ async function main() {
       ]);
       await publisher.send(payload(sample, Date.now(), fleet));
       if (process.env.STATUS_PUBLIC_URL && process.env.STATUS_PUBLIC_KEY_FILE && Date.now() >= nextPublic) {
-        nextPublic = Date.now() + 30000;
+        nextPublic = Date.now() + 180000;
         const secret = (await readFile(process.env.STATUS_PUBLIC_KEY_FILE, 'utf8')).trim();
         const ok = await publishPublic(process.env.STATUS_PUBLIC_URL, secret, sample);
         if (!ok && !publicFailing) console.error('Public status feed is not accepting updates.');
