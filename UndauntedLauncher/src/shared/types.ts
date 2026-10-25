@@ -163,7 +163,7 @@ export interface SavedServerInfo {
 }
 
 export interface Settings {
-  huntRegion?: 'auto' | 'main' | 'ger' | 'us';
+  huntRegion?: 'auto' | 'main' | 'ger' | 'us' | 'sg';
   graphics: GraphicsPreset;
   exposure: ExposureMode;
   windowed: boolean;
