@@ -225,6 +225,13 @@
       "when": 1792200000003,
       "tag": "0031_sg_region",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1792200000004,
+      "tag": "0032_key_rotation_catchup",
+      "breakpoints": true
     }
   ]
 }
