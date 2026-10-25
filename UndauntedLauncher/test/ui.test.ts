@@ -23,6 +23,8 @@ const ERROR_CODES: Record<ErrorCode, true> = {
   offline_save_invalid: true,
   invite_invalid_format: true,
   invite_invalid: true,
+  invite_required: true,
+  invite_applied: true,
   username_invalid: true,
   username_taken: true,
   registration_closed: true,

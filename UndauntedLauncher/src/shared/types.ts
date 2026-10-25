@@ -47,6 +47,8 @@ export type ErrorCode =
   | "account_banned"
   | "invite_invalid_format"
   | "invite_invalid"
+  | "invite_required"
+  | "invite_applied"
   | "username_invalid"
   | "username_taken"
   | "registration_closed"
@@ -161,7 +163,7 @@ export interface SavedServerInfo {
 }
 
 export interface Settings {
-  huntRegion?: 'auto' | 'main' | 'ger' | 'us';
+  huntRegion?: 'auto' | 'main' | 'ger' | 'us' | 'sg';
   graphics: GraphicsPreset;
   exposure: ExposureMode;
   windowed: boolean;
@@ -261,6 +263,7 @@ export const IPC = {
   removeSavedServer: "dr:remove-saved-server",
   register: "dr:register",
   useExistingKey: "dr:use-existing-key",
+  setInviteCode: "dr:set-invite-code",
   importKeyFile: "dr:import-key-file",
   saveKeyBackup: "dr:save-key-backup",
   dismissBackupOffer: "dr:dismiss-backup-offer",

@@ -8,7 +8,7 @@ import newsBadge from "./brand/news-badge.svg";
 import { buildScene } from "./scene";
 import { isStringKey, translate, type StringKey } from "../shared/i18n";
 import { localized, PATRONS, PROJECT_PEOPLE, SOFTWARE, UPSTREAM_PEOPLE, type CreditPerson, type CreditRole } from "../shared/credits";
-import { parseInvite } from "../shared/invite";
+import { looksLikeInvite, parseInvite } from "../shared/invite";
 import { checkUsername, extractAccountKey } from "../shared/username";
 import { exposureKey, graphicsKey, primaryButton, shortFile, stepIndex, taskView, updateReason, whereKey } from "../shared/ui-model";
 import { formatBytes, formatDate, formatDuration, formatRunningTime } from "../shared/format";
@@ -88,6 +88,16 @@ const inviteInput = h("textarea", {
 const inviteHint = h("div", { class: "hint", id: "invite-hint", "aria-live": "polite" });
 const invitePreview = h("div", { class: "preview", hidden: true });
 
+const registerInviteInput = h("input", {
+  class: "input",
+  id: "register-invite-input",
+  type: "text",
+  maxlength: 2048,
+  spellcheck: "false",
+  autocomplete: "off",
+  "data-fk": "register-invite",
+});
+
 const usernameInput = h("input", {
   class: "input input-big",
   id: "username-input",
@@ -141,6 +151,12 @@ usernameInput.addEventListener("input", () => {
   state.username = usernameInput.value;
   updateUsernameFeedback();
   renderActionBar();
+});
+registerInviteInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    void onPrimary();
+  }
 });
 usernameInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
@@ -488,6 +504,19 @@ function playConnect(snap: Snapshot): HTMLElement[] {
 }
 
 async function useKey(): Promise<void> {
+  // An invite pasted here (a common slip) is not an error: it is taken as the invite it is.
+  if (looksLikeInvite(keyInput.value)) {
+    const r = await api.setInviteCode(keyInput.value);
+    if (r.ok) {
+      keyInput.value = "";
+      state.keyFormOpen = false;
+      state.localError = { code: "invite_applied" };
+    } else if (!state.snap?.lastError) {
+      state.localError = r.error;
+    }
+    renderAll();
+    return;
+  }
   const key = extractAccountKey(keyInput.value);
   if (!key) {
     state.localError = { code: "key_invalid" };
@@ -583,12 +612,15 @@ function playRegister(snap: Snapshot): HTMLElement[] {
         usernameInput,
         usernameHint,
       ),
-      h(
-        "p",
-        { class: `small-print reg-invite${snap.server?.hasPendingInvite ? " included" : ""}` },
-        icon(snap.server?.hasPendingInvite ? "check" : "info"),
-        snap.server?.hasPendingInvite ? t("reg_invite_included") : t("reg_invite_missing"),
-      ),
+      snap.server?.hasPendingInvite
+        ? h("p", { class: "small-print reg-invite included" }, icon("check"), t("reg_invite_included"))
+        : h(
+            "div",
+            { class: "field" },
+            h("label", { class: "field-label", for: "register-invite-input" }, t("reg_invite_label")),
+            registerInviteInput,
+            h("p", { class: "small-print reg-invite" }, icon("info"), t("reg_invite_hint")),
+          ),
     ),
     card(
       "",
@@ -943,7 +975,22 @@ async function onPrimary(): Promise<void> {
     case "new_invite":
       showModal({ kind: "leave" });
       return;
-    case "register":
+    case "register": {
+      const typedInvite = registerInviteInput.value.trim();
+      if (typedInvite) {
+        const applied = await api.setInviteCode(typedInvite);
+        if (!applied.ok) {
+          result = applied;
+          break;
+        }
+        registerInviteInput.value = "";
+      } else if (!state.snap?.server?.hasPendingInvite && state.snap?.status?.registration === "INVITECODE") {
+        // Never send a registration that is certain to be refused.
+        state.localError = { code: "invite_required" };
+        renderBanners();
+        registerInviteInput.focus();
+        return;
+      }
       result = await api.register(state.username.trim());
       if (result.ok) {
         state.username = "";
@@ -951,6 +998,7 @@ async function onPrimary(): Promise<void> {
         updateUsernameFeedback();
       }
       break;
+    }
     case "install":
     case "update":
       result = await api.startInstall();
@@ -1463,12 +1511,12 @@ function renderSettings(): void {
     const windowed = h("button", { type: "button", class: "switch", role: "switch", "aria-checked": snap.settings.windowed ? "true" : "false", "aria-labelledby": "windowed-label", "data-fk": "windowed" });
     onToggle(windowed, (on) => void api.setSettings({ windowed: on }));
 
-    type HuntRegion = 'auto' | 'main' | 'ger' | 'us';
+    type HuntRegion = 'auto' | 'main' | 'ger' | 'us' | 'sg';
     const huntRegion = dropdown<HuntRegion>({
       id: 'hunt-region',
       fk: 'hunt-region',
       value: snap.settings.huntRegion ?? 'auto',
-      options: [{ value: 'auto', label: t('region_auto') }, { value: 'main', label: t('region_main') }, { value: 'ger', label: t('region_ger') }, { value: 'us', label: t('region_us') }],
+      options: [{ value: 'auto', label: t('region_auto') }, { value: 'main', label: t('region_main') }, { value: 'ger', label: t('region_ger') }, { value: 'us', label: t('region_us') }, { value: 'sg', label: t('region_sg') }],
       onChange: (huntRegion) => void api.setSettings({ huntRegion }),
       disabled: busy,
     });
@@ -1940,6 +1988,7 @@ function applyStaticI18n(): void {
   inviteInput.placeholder = t("join_placeholder");
   usernameInput.placeholder = t("reg_placeholder");
   keyInput.placeholder = t("reg_key_placeholder");
+  registerInviteInput.placeholder = t("reg_invite_placeholder");
   existingGameInput.placeholder = t("install_existing_placeholder");
   $("#win-max").setAttribute("aria-label", t(state.maximized ? "window_restore" : "window_maximize"));
   $("#github-btn").title = t("github_link");

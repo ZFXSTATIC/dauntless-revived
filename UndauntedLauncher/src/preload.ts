@@ -28,6 +28,7 @@ const api = {
   switchServer: (id: string): Promise<ActionResult> => ipcRenderer.invoke(IPC.switchServer, String(id)),
   removeSavedServer: (id: string): Promise<ActionResult> => ipcRenderer.invoke(IPC.removeSavedServer, String(id)),
   register: (username: string): Promise<RegisterOutcome> => ipcRenderer.invoke(IPC.register, String(username)),
+  setInviteCode: (text: string): Promise<ActionResult> => ipcRenderer.invoke(IPC.setInviteCode, String(text)),
   useExistingKey: (text: string): Promise<ActionResult> => ipcRenderer.invoke(IPC.useExistingKey, String(text)),
   importKeyFile: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.importKeyFile),
   saveKeyBackup: (): Promise<ActionResult> => ipcRenderer.invoke(IPC.saveKeyBackup),
