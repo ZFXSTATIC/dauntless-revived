@@ -91,10 +91,10 @@ describe("gateway configuration", () => {
         ALLOWLIST_SECRET: "a".repeat(40),
     };
 
-    it("accepts all four worker tunnels while refusing external helpers", () => {
-        const urls = [61015,61025,61035,61045].map(port => `http://127.0.0.1:${port}`);
+    it("accepts up to eight worker tunnels while refusing external helpers", () => {
+        const urls = [61015,61025,61035,61045,61055,61065,61075,61085].map(port => `http://127.0.0.1:${port}`);
         assert.deepEqual(LoadGatewayConfig({...Base, ALLOWLIST_ADDITIONAL_URLS:urls.join(',')}).allowlist?.additionalUrls, urls);
-        assert.throws(() => LoadGatewayConfig({...Base, ALLOWLIST_ADDITIONAL_URLS:[...urls, 'http://127.0.0.1:61055'].join(',')}), /four/);
+        assert.throws(() => LoadGatewayConfig({...Base, ALLOWLIST_ADDITIONAL_URLS:[...urls, 'http://127.0.0.1:61095'].join(',')}), /eight/);
         assert.throws(() => LoadGatewayConfig({...Base, ALLOWLIST_ADDITIONAL_URLS:'http://203.0.113.5:61005'}), /127\.0\.0\.1/);
     });
 
