@@ -120,7 +120,7 @@ describe("migrations after the last release (0013_guilds)", () => {
     it("the new migration files only create tables and indexes", () => {
         for(const Entry of NewEntries){
             // SQLite CHECK constraints require a table rebuild; covered with seeded rows below.
-            if (['0022_germany_region','0028_us_region'].includes(Entry.tag)) continue;
+            if (['0022_germany_region','0028_us_region','0031_sg_region'].includes(Entry.tag)) continue;
             const Sql = fs.readFileSync(path.join(MIGRATIONS, `${Entry.tag}.sql`), "utf8");
             if(Entry.tag === '0029_temporary_bans'){
                 assert.deepEqual(Sql.split('--> statement-breakpoint').map(s=>s.trim()),[
@@ -156,6 +156,25 @@ describe("migrations after the last release (0013_guilds)", () => {
             db.$client.prepare('INSERT INTO huntregions VALUES (?,?)').run('us','us');
             assert.throws(()=>db.$client.prepare('INSERT INTO huntregions VALUES (?,?)').run('missing','us'), /FOREIGN KEY/);
             assert.throws(()=>db.$client.prepare('UPDATE huntregions SET region=? WHERE userId=?').run('unknown','us'), /CHECK/);
+            assert.deepEqual(db.$client.pragma('foreign_key_check'), []);
+        } finally {db.$client.close();}
+    });
+
+    it('Singapore migration keeps every earlier preference and accepts sg', () => {
+        const db = Open(path.join(Dir, 'sg-regions.db'));
+        try {
+            db.$client.exec("CREATE TABLE users (userId text PRIMARY KEY); INSERT INTO users VALUES ('eu'), ('au'), ('de'), ('us'), ('sg'); PRAGMA foreign_keys=ON;");
+            db.$client.exec(fs.readFileSync(path.join(MIGRATIONS,'0020_hunt_regions.sql'),'utf8'));
+            db.$client.transaction(() => db.$client.exec(fs.readFileSync(path.join(MIGRATIONS,'0022_germany_region.sql'),'utf8')))();
+            db.$client.exec("INSERT INTO huntregions VALUES ('eu','main'),('au','aus'),('de','ger');");
+            db.$client.transaction(() => db.$client.exec(fs.readFileSync(path.join(MIGRATIONS,'0028_us_region.sql'),'utf8')))();
+            db.$client.prepare('INSERT INTO huntregions VALUES (?,?)').run('us','us');
+            const before = Rows(db,'huntregions');
+            db.$client.transaction(() => db.$client.exec(fs.readFileSync(path.join(MIGRATIONS,'0031_sg_region.sql'),'utf8')))();
+            assert.deepEqual(Rows(db,'huntregions'), before);
+            db.$client.prepare('INSERT INTO huntregions VALUES (?,?)').run('sg','sg');
+            assert.throws(()=>db.$client.prepare('INSERT INTO huntregions VALUES (?,?)').run('missing','sg'), /FOREIGN KEY/);
+            assert.throws(()=>db.$client.prepare('UPDATE huntregions SET region=? WHERE userId=?').run('unknown','sg'), /CHECK/);
             assert.deepEqual(db.$client.pragma('foreign_key_check'), []);
         } finally {db.$client.close();}
     });

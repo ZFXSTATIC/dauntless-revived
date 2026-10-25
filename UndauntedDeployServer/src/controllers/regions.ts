@@ -3,15 +3,15 @@ import { resolve } from 'node:path';
 import { CapacityUnavailable } from './capacity';
 import { RemoteLaunch, ReadWorkerSnapshot, GameserverSnapshot } from './overflow';
 
-export type RegionChoice = 'main' | 'aus' | 'ger' | 'us' | 'mixed';
+export type RegionChoice = 'main' | 'aus' | 'ger' | 'us' | 'sg' | 'mixed';
 type Request = Parameters<typeof RemoteLaunch>[1];
 type Load = {running:number,pending:number,limit:number|null};
-type WorkerRegion = 'aus' | 'ger' | 'us';
+type WorkerRegion = 'aus' | 'ger' | 'us' | 'sg';
 type WorkerEntry = {urls: string[], hosts: string[]};
 // workers.json: {"us": {"urls": ["http://127.0.0.1:61041", "http://127.0.0.1:61042"], "hosts": ["1.2.3.4", "5.6.7.8"]}, "ger": {...}}
 // It is looked at on every call (stat first, parsed only when it changed), so a worker is added by editing
 // this file and the deploy server does not restart. Missing or unreadable: the last good copy, then the
-// *_DEPLOYSERVER_URL and *_PUBLIC_HOST settings below. Only us and ger may list several workers.
+// *_DEPLOYSERVER_URL and *_PUBLIC_HOST settings below. Only us, ger and sg may list several workers.
 let WorkersCache: {mtimeMs: number, data: any} = {mtimeMs: -1, data: undefined};
 function WorkersFile() {
     return process.env.WORKERS_FILE || resolve(process.cwd(), '..', '..', 'data', 'config', 'workers.json');
@@ -34,13 +34,13 @@ function FileWorkers(region: WorkerRegion): WorkerEntry | undefined {
 export function WorkerHosts(region: WorkerRegion): string[] {
     const file = region === 'aus' ? undefined : FileWorkers(region);
     if (file && file.hosts.length) return file.hosts;
-    const setting = region === 'us' ? 'US_PUBLIC_HOST' : region === 'ger' ? 'GERMANY_PUBLIC_HOST' : 'AUS_PUBLIC_HOST';
+    const setting = region === 'us' ? 'US_PUBLIC_HOST' : region === 'ger' ? 'GERMANY_PUBLIC_HOST' : region === 'sg' ? 'SG_PUBLIC_HOST' : 'AUS_PUBLIC_HOST';
     return (process.env[setting] ?? '').split(',').map(host => host.trim()).filter(Boolean);
 }
 export function AusUrls(region: WorkerRegion = 'aus'): URL[] {
     // Retired permanently, including when an old environment file is restored.
     if (region === 'aus') return [];
-    const setting = region === 'us' ? 'US_DEPLOYSERVER_URL' : 'GERMANY_DEPLOYSERVER_URL';
+    const setting = region === 'us' ? 'US_DEPLOYSERVER_URL' : region === 'sg' ? 'SG_DEPLOYSERVER_URL' : 'GERMANY_DEPLOYSERVER_URL';
     const fromFile = FileWorkers(region);
     const raw = fromFile ? fromFile.urls.join(',') : process.env[setting];
     if (!raw) return [];
@@ -67,7 +67,7 @@ export async function DescribeAusSnapshot(region: WorkerRegion = 'aus'): Promise
         servers: parts.flatMap(part => part.servers.map(server => ({...server, host: region, region})))
     };
 }
-export async function DescribeAus(region: 'aus' | 'ger' | 'us' = 'aus'): Promise<any[]> {
+export async function DescribeAus(region: 'aus' | 'ger' | 'us' | 'sg' = 'aus'): Promise<any[]> {
     return (await DescribeAusSnapshot(region)).servers;
 }
 export class RegionalRouter {
@@ -80,7 +80,7 @@ export class RegionalRouter {
             return body.capacity;
         }) {}
     async launch<T>(body: Request, choice: RegionChoice, main: () => Promise<T>): Promise<T | NonNullable<Awaited<ReturnType<typeof RemoteLaunch>>>> {
-        if (choice === 'ger' || choice === 'us') {
+        if (choice === 'ger' || choice === 'us' || choice === 'sg') {
             const workers = AusUrls(choice);
             if (!workers.length) throw new CapacityUnavailable('hunts');
             const hosts = WorkerHosts(choice);

@@ -20,3 +20,13 @@ test('retired OCE never advertises a probe even with stale flags',()=>{
  try{assert.ok(!RegionProbes().some(r=>String(r.region)==='aus'));}
  finally{delete process.env.AUS_REGION;delete process.env.REGION_AUS_PROBE_HOST;}
 });
+
+test('Singapore advertises a probe only when SG_REGION is on',()=>{
+ delete process.env.REGION_US_PROBE_HOST;delete process.env.US_REGION;
+ process.env.REGION_SG_PROBE_HOST='sg.example.com';
+ try{
+  assert.ok(!RegionProbes().some(r=>r.region==='sg'));
+  process.env.SG_REGION='1';
+  assert.deepEqual(RegionProbes().filter(r=>r.region==='sg'),[{region:'sg',host:'sg.example.com',port:443}]);
+ } finally{delete process.env.SG_REGION;delete process.env.REGION_SG_PROBE_HOST;}
+});
