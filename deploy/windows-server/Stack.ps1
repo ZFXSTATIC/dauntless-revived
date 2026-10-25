@@ -365,11 +365,20 @@ function Start-Components([switch]$Supervised) {
     if ($Enabled -contains 'deploy' -and @(Get-DRComponentProcesses $P 'deploy').Count -eq 0) { Stop-GameServers }   # leftovers from a crash
     if ($Enabled -contains 'metagame' -and @(Get-DRComponentProcesses $P 'metagame').Count -eq 0) {
         $age = Get-DRLatestBackupAge $P.Backups
-        if ($Supervised -and $null -ne $age -and $age.TotalMinutes -lt 10) {
-            Say "backup: the newest backup is $([math]::Round($age.TotalMinutes)) min old; not taking another"
+        # The daily backup task copies the whole database (tens of GB, about an hour), so an automatic
+        # restart must not wait for a fresh copy. A recent daily backup is enough; an older one is tried
+        # first, and if that fails the supervisor starts anyway and says so, as long as the newest copy is
+        # under 48 hours old. A manual start keeps the strict rule.
+        if ($Supervised -and $null -ne $age -and $age.TotalHours -lt 30) {
+            if ($age.TotalHours -ge 6) { Say "!! backup: the newest backup is $([math]::Round($age.TotalHours, 1)) h old; starting without a new one" }
+            else { Say "backup: the newest backup is $([math]::Round($age.TotalMinutes)) min old; not taking another" }
         } elseif (-not (Invoke-Backup)) {
-            Say '!! not starting the metagame without a backup (use -NoBackup to override)'
-            return $false
+            if ($Supervised -and $null -ne $age -and $age.TotalHours -lt 48) {
+                Say "!! backup failed; starting anyway with the $([math]::Round($age.TotalHours, 1)) h old backup"
+            } else {
+                Say '!! not starting the metagame without a backup (use -NoBackup to override)'
+                return $false
+            }
         }
     }
     $all = $true
