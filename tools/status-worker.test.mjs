@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {boxRow, parseFleet, payload, sampleFleet, FLEET} from './status-worker.mjs';
+import {boxRow, parseFleet, payload, sampleFleet, publishPublic, FLEET} from './status-worker.mjs';
 
 const json=(running,limit,servers=[],cpu={percent:40,blocked:false})=>({servers,capacity:{running,pending:0,limit,cpu}});
 
@@ -35,4 +35,20 @@ test('the embed names the current regions and totals the servers that answer', (
 });
 test('a failed backend check says so', () => {
   assert.match(payload(null,1e12,{rows:[]}).embeds[0].description,/check failed/);
+});
+test('the public feed sends only online and the player count', async () => {
+  let seen;
+  const ok = await publishPublic('https://relay.example/status', 'k', {players: 7, uptime: 5, ms: 3}, 5000, async (url, init) => { seen = {url: String(url), init}; return {ok: true, body: null}; });
+  assert.equal(ok, true);
+  assert.deepEqual(JSON.parse(seen.init.body), {online: true, playersOnline: 7, at: 5});
+  assert.equal(seen.init.headers.authorization, 'Bearer k');
+});
+test('the public feed reports a failed backend as offline and survives network errors', async () => {
+  let body;
+  await publishPublic('https://relay.example/status', 'k', null, 1000, async (u, init) => { body = JSON.parse(init.body); return {ok: true, body: null}; });
+  assert.deepEqual(body, {online: false, playersOnline: 0, at: 1});
+  assert.equal(await publishPublic('https://relay.example/status', 'k', null, 1000, async () => { throw new Error('down'); }), false);
+});
+test('the public feed refuses a non-https relay', async () => {
+  await assert.rejects(() => publishPublic('http://relay.example/status', 'k', null), /https/);
 });

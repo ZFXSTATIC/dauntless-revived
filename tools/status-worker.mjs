@@ -148,6 +148,21 @@ export class Publisher {
 }
 
 let logChain = Promise.resolve();
+// Optional public feed: only whether the backend answered and how many players are online go to the website relay.
+export async function publishPublic(url, secret, sample, now = Date.now(), fetcher = fetch) {
+  const target = new URL(url);
+  if (target.protocol !== 'https:' || target.username || target.password) throw new Error('Public status relay must use https');
+  try {
+    const res = await fetcher(target, {
+      method: 'PUT', headers: {'content-type': 'application/json', authorization: `Bearer ${secret}`},
+      body: JSON.stringify({online: sample !== null, playersOnline: sample ? sample.players : 0, at: Math.floor(now / 1000)}),
+      signal: AbortSignal.timeout(5000), redirect: 'error'
+    });
+    await res.body?.cancel();
+    return res.ok;
+  } catch { return false; }
+}
+
 async function main() {
   if (process.env.STATUS_ERROR_FILE) {
     // Only static messages from this module; never exception objects or HTTP bodies.
@@ -168,6 +183,7 @@ async function main() {
   const publisher = new Publisher(webhook, state, save);
   if (publisher.disabled) console.error('Status delivery paused: review persisted initial-message state.');
   const fleetEntries = parseFleet(process.env.STATUS_FLEET);
+  let nextPublic = 0, publicFailing = false;
   while (true) {
     try {
       // The key is read every cycle so a rotated owner key never leaves the check failing until a restart.
@@ -177,6 +193,13 @@ async function main() {
         sampleFleet(fleetEntries)
       ]);
       await publisher.send(payload(sample, Date.now(), fleet));
+      if (process.env.STATUS_PUBLIC_URL && process.env.STATUS_PUBLIC_KEY_FILE && Date.now() >= nextPublic) {
+        nextPublic = Date.now() + 30000;
+        const secret = (await readFile(process.env.STATUS_PUBLIC_KEY_FILE, 'utf8')).trim();
+        const ok = await publishPublic(process.env.STATUS_PUBLIC_URL, secret, sample);
+        if (!ok && !publicFailing) console.error('Public status feed is not accepting updates.');
+        publicFailing = !ok;
+      }
     } catch { console.error('Status cycle failed; retrying without creating another message.'); }
     await new Promise(resolve => setTimeout(resolve, 5000));
   }

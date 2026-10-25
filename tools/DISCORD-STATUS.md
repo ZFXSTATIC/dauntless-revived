@@ -61,3 +61,18 @@ blind reuse of the last server would be unsafe. This worker does not implement i
 References: [Discord webhooks](https://docs.discord.com/developers/resources/webhook),
 [rate limits](https://docs.discord.com/developers/topics/rate-limits),
 [Node memory tuning](https://nodejs.org/en/learn/diagnostics/memory/understanding-and-tuning-memory).
+
+## Public player-count feed (optional)
+
+The status worker can also send two numbers, whether the backend answered and how many
+players are online, to a public relay so a website can show them. Nothing else goes
+out: no account names, addresses, keys or hunt data. Set both in `worker.env`:
+
+```
+STATUS_PUBLIC_URL=https://example.com/api/dr-status
+STATUS_PUBLIC_KEY_FILE=C:/DauntlessRevived/data/keys/status-relay.key
+```
+
+The key file holds the relay's shared secret and stays out of Git. It is sent as a
+bearer token, once every 30 seconds, over https only. If either variable is unset the
+feed is off. A relay that is down never affects the Discord message.
