@@ -1497,7 +1497,7 @@ try {
                 $bkAction = New-ScheduledTaskAction -Execute (Join-Path $sys32 'wscript.exe') -Argument (ConvertTo-DRArgString @((Join-Path $P.Bin 'backup-hidden.vbs'), $Root)) -WorkingDirectory $P.Bin
                 $bkTrigger = New-ScheduledTaskTrigger -Daily -At '00:05'
                 $bkTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At '00:05' -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Hours 23 -Minutes 55)).Repetition
-                $bkSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+                $bkSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 6) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
                 Register-DRServiceTask -TaskName $DRNames.BackupTask -Action $bkAction -Trigger $bkTrigger -Settings $bkSettings -Password $taskPw `
                     -Description 'Hourly backup of the Dauntless Revived database and keys (48 hourly + 30 daily kept).'
                 Write-DROk "'$($DRNames.BackupTask)': hourly"
