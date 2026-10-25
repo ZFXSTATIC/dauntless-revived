@@ -28,7 +28,7 @@ export function ModerationInfo(accountId:string){
     const db=GetDb().$client;
     ExpirePlayingAddresses();
     const user=db.prepare('SELECT name FROM users WHERE userId=?').get(accountId) as {name:string}|undefined;
-    return {username:user?.name ?? null,ban:db.prepare('SELECT reason,address,CASE WHEN expires_at<=? THEN 0 ELSE active END AS active,updated_at,expires_at FROM account_bans WHERE account_id=?').get(Date.now(),accountId) ?? null,
+    return {username:user?.name ?? null,notice:NoticeFor(accountId) ?? null,ban:db.prepare('SELECT reason,address,CASE WHEN expires_at<=? THEN 0 ELSE active END AS active,updated_at,expires_at FROM account_bans WHERE account_id=?').get(Date.now(),accountId) ?? null,
         devices:DeviceSignalInfo(accountId),addresses:playingAddresses.has(accountId)?[playingAddresses.get(accountId)!]:[]};
 }
 export function SetAccountBan(accountId:unknown,reason:unknown,active:unknown,address:unknown,actor:string,durationHours?:unknown,includeDevice:unknown=false){
@@ -63,4 +63,25 @@ export function ModerationLog(kind:'bans'|'events',offset=0){
         : db.prepare(`SELECT e.id,e.account_id,u.name AS username,e.reason,e.active,e.created_at,e.expires_at,e.actor FROM moderation_events e LEFT JOIN users u ON u.userId=e.account_id
             ORDER BY e.id DESC LIMIT 51 OFFSET ?`).all(offset);
     return {rows:rows.slice(0,50),nextOffset:rows.length>50?offset+50:null};
+}
+
+// A warning shown to one player in the launcher (it reads it with every ServerStatus poll),
+// for example "make a ticket or be banned". It does not block anything; a ban does.
+export function NoticeFor(accountId?: string): {message:string,updated_at:number}|undefined {
+    if(!accountId)return undefined;
+    return GetDb().$client.prepare('SELECT message,updated_at FROM account_notices WHERE account_id=?').get(accountId) as {message:string,updated_at:number}|undefined;
+}
+export function SetAccountNotice(accountId:unknown,message:unknown,actor:string){
+    if(typeof accountId!=='string' || (message!==null && (typeof message!=='string' || !message.trim() || message.length>500)))throw Error('invalid_notice');
+    const db=GetDb().$client;
+    if(!db.prepare('SELECT 1 FROM users WHERE userId=?').get(accountId))throw Error('account_not_found');
+    if(message===null)db.prepare('DELETE FROM account_notices WHERE account_id=?').run(accountId);
+    else db.prepare(`INSERT INTO account_notices(account_id,message,updated_at,actor) VALUES (?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET
+        message=excluded.message,updated_at=excluded.updated_at,actor=excluded.actor`).run(accountId,message.trim(),Date.now(),actor);
+    return ModerationInfo(accountId);
+}
+// What the launcher of this player shows: an active ban (with its reason) and the warning.
+export function AccountStanding(accountId:string){
+    const ban=BanFor(accountId),notice=NoticeFor(accountId);
+    return {banned:ban?ban.reason:null,notice:notice?notice.message:null,noticeAt:notice?notice.updated_at:null};
 }

@@ -12,7 +12,7 @@ import { DeleteInviteCode, GetAllUserIds, GetInviteCodes, GetRecentPlayerData, I
 import { HasUndauntedUserApiKey } from "../middleware/HasUndauntedUserApiKey";
 import { HasUndauntedAdminApiKey } from "../middleware/HasUndauntedAdminApiKey";
 import { SignMetagameJWTForUid } from "../controllers/auth";
-import {ModerationInfo,SetAccountBan,EndPlayingAddress,ModerationLog} from '../controllers/moderation';
+import {ModerationInfo,SetAccountBan,EndPlayingAddress,ModerationLog,SetAccountNotice,AccountStanding} from '../controllers/moderation';
 import { GetCharacterIdsForUserId, GetSaveHistory, RollbackCharacter, RollbackError, RollbackLoadout } from "../controllers/savehistory";
 import { GetObjectiveRecords, GetSelectedHuntPass, GetTrackRecords, SeedProgression } from "../controllers/realprogression";
 import { IsRealProgressionAccount } from "../controllers/progressionmode";
@@ -28,7 +28,7 @@ import { InviteToParty } from "../controllers/party";
 import { SendOrAcceptFriendRequest } from "../controllers/friends";
 import { DisbandGuildAsAdmin, GuildNameOf, InviteToGuild, ListGuilds } from "../controllers/guild";
 import { RefuseAdminKeyThroughProxy } from "../middleware/RequestOrigin";
-import { IsSoftRegisteredCaller, SoftAccountAuth } from "../middleware/SoftAccountAuth";
+import { IsSoftRegisteredCaller, SoftAccountAuth, SoftCallerUserId } from "../middleware/SoftAccountAuth";
 import { AdminMutationRateLimit, HealthReadRateLimit } from "../middleware/RateLimits";
 import { BackendHealthEnabled, BackendRuntimeHealth } from '../middleware/BackendHealth';
 import { userapikeys, users } from '../db/schema';
@@ -122,6 +122,12 @@ undauntedApiRouter.get('/ModerationLog', HasUndauntedAdminApiKey, (req,res)=>{
 undauntedApiRouter.post('/Moderation', HasUndauntedAdminApiKey, (req:any,res)=>{
     try {res.json(SetAccountBan(req.body.accountId,req.body.reason,req.body.active,req.body.address,req.UndauntedUserInfo.UserId,req.body.durationHours,req.body.includeDevice??false));}
     catch(e){const message=e instanceof Error?e.message:'';res.status(400).json({error:['invalid_ban','invalid_address','invalid_duration','account_not_found','admin_account_protected','address_not_observed','device_not_observed','invalid_device_scope'].includes(message)?message:'moderation_failed'});}
+});
+
+// Body {accountId, message}: the warning that player's launcher shows live; message null clears it.
+undauntedApiRouter.post('/Notice', HasUndauntedAdminApiKey, (req:any,res)=>{
+    try {res.json(SetAccountNotice(req.body?.accountId,req.body?.message,req.UndauntedUserInfo.UserId));}
+    catch(e){const message=e instanceof Error?e.message:'';res.status(400).json({error:['invalid_notice','account_not_found'].includes(message)?message:'notice_failed'});}
 });
 
 function StatusForRollbackError(Error: RollbackError){
@@ -324,12 +330,14 @@ undauntedApiRouter.post("/RenameUser", HasUndauntedAdminApiKey, async (req: any,
 // launcher can read it before registering. Each variant is cached 5 s.
 undauntedApiRouter.get("/ServerStatus", SoftAccountAuth, async (req, res) => {
     const Status = await GetServerStatus(IsSoftRegisteredCaller(req) ? "full" : "limited");
+    const CallerId = SoftCallerUserId(req);
 
     res.status(200);
     res.set("Cache-Control", "no-store");
     res.vary("x-undaunted-user-api-key");
     res.vary("authorization");
-    res.json(Status);
+    // The caller's own ban reason and warning, so the launcher shows them live with each poll.
+    res.json(CallerId ? { ...Status, account: AccountStanding(CallerId) } : Status);
 });
 
 undauntedApiRouter.get("/GetUserInfo", HasUndauntedUserApiKey, async (req: any, res) => {

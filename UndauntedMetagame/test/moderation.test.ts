@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {GetDb} from '../src/db';
 import {users,userapikeys} from '../src/db/schema';
 import {HashUserAPIKey,SignMetagameJWTForUid,ValidateMetagameJWTAndGetPayload} from '../src/controllers/auth';
-import {BanFor,CheckPlayerAccess,ModerationInfo,SetAccountBan,RecordPlayingAddress,EndPlayingAddress,ExpirePlayingAddresses,ModerationLog} from '../src/controllers/moderation';
+import {BanFor,CheckPlayerAccess,ModerationInfo,SetAccountBan,SetAccountNotice,RecordPlayingAddress,EndPlayingAddress,ExpirePlayingAddresses,ModerationLog} from '../src/controllers/moderation';
 import {app} from '../src/app';
 after(()=>RemoveTestDb(()=>GetDb().$client.close()));
 
@@ -107,4 +107,32 @@ test('trusted IP logging, account/IP bans, required reasons, JWT revocation and 
     assert.equal((await request('/undaunted/api/GetUserInfo',key)).status,200);
     assert.equal(ModerationInfo('UID-ban-test').addresses.length,0);
   }finally{await new Promise<void>((r,j)=>server.close(e=>e?j(e):r()));delete process.env.GATEWAY_SECRET;}
+});
+test('per-player warnings: admins set and clear them, the player reads them and any ban with ServerStatus',async()=>{
+  const db=GetDb(),key='UUK_'+'c'.repeat(48),admin='UUK_'+'d'.repeat(48);
+  db.insert(users).values([{userId:'UID-notice-test',name:'NoticeTest',notes:0},{userId:'UID-notice-admin',name:'NoticeAdmin',notes:0,isAdmin:true}]).run();
+  db.insert(userapikeys).values([{userId:'UID-notice-test',keyHash:HashUserAPIKey(key)},{userId:'UID-notice-admin',keyHash:HashUserAPIKey(admin)}]).run();
+  assert.throws(()=>SetAccountNotice('UID-notice-test',' ','owner'),/invalid_notice/);
+  assert.throws(()=>SetAccountNotice('UID-notice-test','x'.repeat(501),'owner'),/invalid_notice/);
+  assert.throws(()=>SetAccountNotice('UID-nobody','Make a ticket','owner'),/account_not_found/);
+  const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));
+  const port=(server.address() as any).port;
+  try {
+    const request=async(path:string,k:string,body?:unknown)=>fetch(`http://127.0.0.1:${port}${path}`,{method:body?'POST':'GET',headers:{'x-undaunted-user-api-key':k,'content-type':'application/json'},body:body?JSON.stringify(body):undefined});
+    const standing=async(k:string)=>(await (await request('/undaunted/api/ServerStatus',k)).json() as any).account;
+    assert.deepEqual(await standing(key),{banned:null,notice:null,noticeAt:null});
+    assert.equal(await standing('UUK_'+'e'.repeat(48)),undefined);
+    assert.equal((await request('/undaunted/api/Notice',key,{accountId:'UID-notice-test',message:'Make a ticket'})).status,403);
+    const set=await request('/undaunted/api/Notice',admin,{accountId:'UID-notice-test',message:' Make a ticket and @ me or be banned '});
+    assert.equal(set.status,200);assert.equal((await set.json() as any).notice.message,'Make a ticket and @ me or be banned');
+    const now=await standing(key);assert.equal(now.notice,'Make a ticket and @ me or be banned');assert.equal(now.banned,null);assert.ok(now.noticeAt>0);
+    assert.equal((await request('/undaunted/api/GetUserInfo',key)).status,200);
+    SetAccountBan('UID-notice-test','Cheating: make a ticket',true,null,'owner');
+    assert.equal((await standing(key)).banned,'Cheating: make a ticket');
+    assert.equal((await request('/undaunted/api/GetUserInfo',key)).status,403);
+    SetAccountBan('UID-notice-test','Lifted',false,null,'owner');
+    assert.equal((await request('/undaunted/api/Notice',admin,{accountId:'UID-notice-test',message:null})).status,200);
+    assert.deepEqual(await standing(key),{banned:null,notice:null,noticeAt:null});
+    assert.equal((await request('/undaunted/api/Notice',admin,{accountId:'UID-notice-test',message:42})).status,400);
+  } finally {server.close();}
 });

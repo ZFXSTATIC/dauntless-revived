@@ -41,5 +41,8 @@ export const XMPP_PORT = 61099;
 
 export const CONNECT_TIMEOUT_MS = 5000;
 export const STATUS_POLL_MS = 15000;
+// While the window is hidden (status polling stops), ServerStatus is still read this often so a
+// staff warning or ban reaches a player who is in game.
+export const STANDING_POLL_MS = 60000;
 export const DISK_MARGIN_BYTES = 1024 * 1024 * 1024; // 1 GiB on top of what is still to download
 export const DOWNLOAD_CONCURRENCY = 4;

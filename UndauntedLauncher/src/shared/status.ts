@@ -39,6 +39,15 @@ export interface ServerStatus {
   // The server hid who is online (playersOnline 0, no players, no instances): its answer to a
   // launcher without an account key there, or with one it did not accept.
   limited: boolean;
+  // This player's own standing, read with every poll so staff can warn or ban them live: the ban
+  // reason and the staff warning, as the server wrote them. null from older servers and anonymous calls.
+  account: StatusAccount | null;
+}
+
+export interface StatusAccount {
+  banned: string | null;
+  notice: string | null;
+  noticeAt: number | null;
 }
 
 const MAX_PLAYERS_LISTED = 500;
@@ -145,6 +154,13 @@ export function parseServerStatus(raw: unknown): ServerStatus | null {
     uptimeSeconds: cleanInt(raw.uptimeSeconds, 0, 100 * 365 * 24 * 3600) ?? 0,
     // Only an explicit true: an older server without the field lists everyone.
     limited: raw.limited === true,
+    account: isObject(raw.account)
+      ? {
+          banned: cleanText(raw.account.banned, 500),
+          notice: cleanText(raw.account.notice, 500),
+          noticeAt: cleanInt(raw.account.noticeAt, 0, Number.MAX_SAFE_INTEGER),
+        }
+      : null,
   };
   // A limited answer lists nobody, whatever else came with it.
   return status.limited ? limitedView(status) : status;
@@ -153,7 +169,7 @@ export function parseServerStatus(raw: unknown): ServerStatus | null {
 // What a limited answer would show: the same server, nobody listed. Used when the launcher knows
 // it can no longer see the list (it just logged out) before the next poll says so.
 export function limitedView(status: ServerStatus): ServerStatus {
-  return { ...status, playersOnline: 0, players: [], instances: [], limited: true };
+  return { ...status, playersOnline: 0, players: [], instances: [], limited: true, account: null };
 }
 
 // Instance cards are listed city first, then dojo, tutorial and hunts, busiest first.

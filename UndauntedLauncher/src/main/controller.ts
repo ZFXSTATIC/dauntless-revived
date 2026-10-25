@@ -20,7 +20,7 @@ import { OFFLINE_KEY_SLOT, type OfflineSaveRuntime } from "./offline-save";
 
 import { extractInviteCode, findInviteLink, parseInvite, isLoopbackHost, type Invite } from "../shared/invite";
 import { checkUsername, extractAccountKey } from "../shared/username";
-import { limitedView, type ServerStatus } from "../shared/status";
+import { limitedView, type ServerStatus, type StatusAccount } from "../shared/status";
 import { saveHuntRegion, endPlaying } from './hostapi';
 import type {
   ActionResult,
@@ -77,11 +77,14 @@ import {
   EXE_RELATIVE_PATH,
   PINNED_EXE_SHA256,
   PROJECT_URL,
+  STANDING_POLL_MS,
   STATUS_POLL_MS,
   XMPP_PORT,
 } from "./constants";
 
 export interface Platform {
+  // A staff warning or ban arrived while the launcher runs: bring it to the player's attention.
+  alertPlayer?: (title: string, message: string) => void;
   collectDeviceSignals?: () => Promise<import('./device-signals').DeviceSignals>;
   userDataDir: string;
   documentsDir?: string;
@@ -191,6 +194,8 @@ export class Controller {
   private taskAbort: AbortController | null = null;
   private job: DownloadJob | null = null;
   private lastError: LauncherError | null = null;
+  private alertedNotice: string | null = null;
+  private standingTimer: ReturnType<typeof setInterval> | null = null;
   private notice: NoticeCode | null = null;
   private updateReady = false;
   private polling = false;
@@ -289,6 +294,8 @@ export class Controller {
     await this.inspectInstall();
     this.publish();
     if (this.s.server) void this.connect();
+    this.standingTimer = setInterval(() => { if (!this.polling) void this.pollStatus(); }, STANDING_POLL_MS);
+    this.standingTimer.unref?.();
   }
 
   private computePhase(): Phase {
@@ -652,6 +659,7 @@ export class Controller {
     if (stale) return;
     if (res.kind === "ok") {
       this.status = res.status;
+      this.applyStanding(res.status.account);
       this.statusUnsupported = false;
       this.failedPolls = 0;
       if (this.branding === null) void this.loadExtras();
@@ -675,6 +683,26 @@ export class Controller {
       }
     }
     this.publish();
+  }
+
+  // Staff warnings and bans from ServerStatus, live: a ban takes the player to the banned screen
+  // at once, lifting it re-checks the key; a new warning is shown and alerted once.
+  private applyStanding(account: StatusAccount | null): void {
+    if (!account) return;
+    if (account.banned !== null) {
+      if (this.lastError?.code !== "account_banned" || this.lastError.detail !== account.banned) {
+        log.warn("the server reports this account as banned");
+        this.p.alertPlayer?.("You are banned", account.banned);
+      }
+      this.keyRejected = true;
+      this.lastError = { code: "account_banned", detail: account.banned };
+    } else if (this.lastError?.code === "account_banned") {
+      this.lastError = null;
+      void this.checkAccount().then(() => this.publish());
+    }
+    const seen = account.notice === null ? null : `${account.noticeAt ?? 0}:${account.notice}`;
+    if (seen !== null && seen !== this.alertedNotice) this.p.alertPlayer?.("Message from the staff", account.notice!);
+    this.alertedNotice = seen;
   }
 
   async refreshStatus(): Promise<void> {
@@ -1713,6 +1741,7 @@ export class Controller {
     this.shuttingDown = true;
     await this.saveTask?.catch(() => undefined);
     this.setStatusPolling(false);
+    if (this.standingTimer) clearInterval(this.standingTimer);
     this.job?.cancel();
     this.taskAbort?.abort();
 

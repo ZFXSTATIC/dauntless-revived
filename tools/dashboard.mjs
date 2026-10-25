@@ -132,6 +132,18 @@ export async function startDashboard({key, backend, port = 61110, logs = {}, ser
       }catch{res.writeHead(502).end(JSON.stringify({error:'Moderation history unavailable'}));}
       return;
     }
+    if (req.method === 'POST' && req.url === '/api/notice') {
+      try {
+        if(req.headers.origin !== `http://${req.headers.host}`){res.writeHead(403).end();return;}
+        if(req.headers['content-type'] !== 'application/json'){res.writeHead(415).end();return;}
+        let text='';for await(const chunk of req){text+=chunk.toString('utf8');if(Buffer.byteLength(text)>2048){res.writeHead(413).end();return;}}
+        const body=JSON.parse(text);
+        const response=await fetcher(new URL('/undaunted/api/Notice',target),{method:'POST',headers:{'x-undaunted-user-api-key':key,'content-type':'application/json'},
+          body:JSON.stringify({accountId:body.accountId,message:body.message}),signal:AbortSignal.timeout(30000),redirect:'error'});
+        res.writeHead(response.status).end(JSON.stringify(await response.json()));
+      }catch{res.writeHead(502).end(JSON.stringify({error:'Warning request failed. Refresh status before retrying.'}));}
+      return;
+    }
     if (moderate || req.url?.startsWith('/api/moderation?')) {
       try {
         let body;

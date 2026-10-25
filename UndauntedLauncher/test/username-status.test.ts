@@ -148,6 +148,19 @@ test("ServerStatus: a limited answer (no key, or a key the server refused) keeps
   assert.deepEqual([odd?.limited, odd?.playersOnline, odd?.players, odd?.instances], [true, 0, [], []]);
 });
 
+test("ServerStatus: the player's own ban and staff warning are read and cleaned; older servers send none", () => {
+  const base = { name: "Revived", online: true };
+  assert.equal(parseServerStatus(base)?.account, null);
+  assert.equal(parseServerStatus({ ...base, account: "x" })?.account, null);
+  const s = parseServerStatus({ ...base, account: { banned: null, notice: `  Make a ticket ${BELL}and @ me  `, noticeAt: 1792800000000 } });
+  assert.deepEqual(s?.account, { banned: null, notice: "Make a ticket and @ me", noticeAt: 1792800000000 });
+  const b = parseServerStatus({ ...base, account: { banned: "x".repeat(600), notice: 5, noticeAt: "soon" } });
+  assert.equal(b?.account?.banned?.length, 500);
+  assert.equal(b?.account?.notice, null);
+  assert.equal(b?.account?.noticeAt, null);
+  assert.equal(limitedView(s!).account, null);
+});
+
 test("limitedView hides the list of a status the launcher can no longer see", () => {
   const s = parseServerStatus(fullStatus)!;
   const v = limitedView(s);

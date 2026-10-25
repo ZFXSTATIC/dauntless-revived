@@ -267,6 +267,19 @@
     }catch(error){el('moderationStatus').textContent=error.message;}
     finally{el('banAccount').disabled=el('unbanAccount').disabled=false;}
   }
+  async function notice(message){
+    const accountId=el('moderationAccount').value.trim();
+    if(!accountId || message===''){el('moderationStatus').textContent='Account ID and warning text are required.';return;}
+    el('sendNotice').disabled=el('clearNotice').disabled=true;
+    try {
+      const response=await fetch('/api/notice',{method:'POST',headers:{'x-dashboard-key':key,'content-type':'application/json'},body:JSON.stringify({accountId,message}),signal:AbortSignal.timeout(35000)});
+      const result=await response.json();if(!response.ok)throw Error(result.error || 'Warning failed');
+      el('moderationInfo').textContent=JSON.stringify(result,null,2);el('moderationStatus').textContent=message===null?'Warning cleared.':'Warning sent. It shows in the player launcher within a minute.';
+    }catch(error){el('moderationStatus').textContent=error.message;}
+    finally{el('sendNotice').disabled=el('clearNotice').disabled=false;}
+  }
+  el('sendNotice').onclick=()=>notice(el('noticeMessage').value.trim());
+  el('clearNotice').onclick=()=>notice(null);
   el('banAccount').onclick=()=>moderate(true);
   el('unbanAccount').onclick=()=>moderate(false);
   const moderationOffsets={bans:null,events:null};

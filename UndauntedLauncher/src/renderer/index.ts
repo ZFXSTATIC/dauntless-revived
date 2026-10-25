@@ -1818,7 +1818,7 @@ function renderBanners(): void {
   const container = $("#banners");
   const snap = state.snap;
   const error = snap?.lastError && snap.lastError.code !== "cancelled" && !(snap.phase === "register" && snap.lastError.code === "key_rejected") ? snap.lastError : state.localError;
-  const sig = JSON.stringify([state.lang, error, snap?.notice ?? null, snap?.app.updateReady ?? false, snap?.game.running ?? false]);
+  const sig = JSON.stringify([state.lang, error, snap?.notice ?? null, snap?.status?.account?.notice ?? null, snap?.app.updateReady ?? false, snap?.game.running ?? false]);
   renderRegion(container, sig, () => {
     const out: HTMLElement[] = [];
     if (error) {
@@ -1834,6 +1834,18 @@ function renderBanners(): void {
             void api.dismissError();
             renderBanners();
           }, { fk: "err-dismiss" }),
+        ),
+      );
+    }
+    const staffNotice = snap?.status?.account?.notice ?? null;
+    if (staffNotice) {
+      out.push(
+        h(
+          "div",
+          { class: "banner banner-error", role: "alert" },
+          icon("warning"),
+          h("span", { class: "banner-text" }, `Message from the staff: ${staffNotice}`),
+          linkButton("Go to support", () => open("discord"), { fk: "staff-notice-support" }),
         ),
       );
     }

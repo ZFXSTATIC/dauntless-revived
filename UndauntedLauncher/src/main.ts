@@ -4,7 +4,7 @@
 // (every request is made here, in the main process, and only to the host from the invite). It can
 // only call the small typed API in preload.ts, and every argument is checked again here.
 
-import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, protocol, safeStorage, screen, session, shell, type IpcMainInvokeEvent } from "electron";
+import { app, autoUpdater, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, protocol, safeStorage, screen, session, shell, type IpcMainInvokeEvent } from "electron";
 import path from "node:path";
 import { freemem } from "node:os";
 import { PortableOfflineSave } from "./main/offline-save";
@@ -471,6 +471,15 @@ function makePlatform(): Platform {
   };
   const layout = offlineLayout(process.resourcesPath, app.getPath("userData"));
   return {
+    // A system notification (it shows over the game in windowed modes) and a flashing taskbar button
+    alertPlayer: (title, message) => {
+      try {
+        if (Notification.isSupported()) new Notification({ title, body: message }).show();
+      } catch (e) {
+        log.warn(`notification failed: ${String(e)}`);
+      }
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) mainWindow.flashFrame(true);
+    },
     userDataDir: app.getPath("userData"),
     documentsDir: app.getPath("documents"),
     resourcesDir: resourcesDir(),
