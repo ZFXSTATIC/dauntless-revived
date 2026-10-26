@@ -56,8 +56,8 @@ test('an instance that never reported ready but has players is left alone',()=>{
  const stuck={...hunt,readyAt:undefined};
  for(let at=300000;at<=600000;at+=60000)assert.equal(policy.reason(stuck,2,at),undefined);
 });
-test('continuous silence retires an instance while telemetry works elsewhere on the host',()=>{
- const policy=HuntLifetimeFromEnv({});
+test('continuous silence retires an instance while telemetry works elsewhere on the host (opt-in)',()=>{
+ const policy=HuntLifetimeFromEnv({HUNT_SILENT_KILL:'1'});
  const neighbour={...hunt,id:'n'};
  let last;
  for(let at=0;at<=900000;at+=60000){
@@ -66,6 +66,11 @@ test('continuous silence retires an instance while telemetry works elsewhere on 
   if(at<900000)assert.equal(last,undefined);
  }
  assert.equal(last,'silent');
+});
+test('silence never retires a hunt by default',()=>{
+ const policy=HuntLifetimeFromEnv({});
+ const neighbour={...hunt,id:'n'};
+ for(let at=0;at<=3600000;at+=60000){policy.reason(neighbour,3,at);assert.equal(policy.reason(hunt,undefined,at),undefined);}
 });
 test('silence proves nothing while no instance on the host reports at all',()=>{
  const policy=HuntLifetimeFromEnv({});

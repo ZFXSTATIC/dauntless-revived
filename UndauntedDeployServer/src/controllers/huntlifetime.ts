@@ -24,7 +24,7 @@ export class HuntLifetime {
     private telemetryAt = Number.NEGATIVE_INFINITY;
 
     constructor(private maxAgeMs=120*60000, private emptyMs=2*60000, private startupGraceMs=0,
-                private silentMs=15*60000, private unreadyGraceMs=5*60000) {}
+                private silentMs=15*60000, private unreadyGraceMs=5*60000, private silentKill=false) {}
 
     prune(ids:Set<string>) {
         for(const id of this.emptySince.keys())if(!ids.has(id))this.emptySince.delete(id);
@@ -49,6 +49,9 @@ export class HuntLifetime {
         if(connections===undefined){
             this.emptySince.delete(server.id);
             if(now-this.telemetryAt>TELEMETRY_WINDOW_MS){this.silentSince.delete(server.id);return;}
+            // Silence is not proof of an empty hunt: a game whose count file is not matched (reused Wine ids)
+            // reads undefined while players are fighting, and was being stopped about 15 minutes in. Off unless asked for.
+            if(!this.silentKill){this.silentSince.delete(server.id);return;}
             return this.elapsed(this.silentSince,server.id,now,this.silentMs)?'silent':undefined;
         }
 
@@ -75,5 +78,5 @@ export function HuntLifetimeFromEnv(env:NodeJS.ProcessEnv=process.env) {
     };
     return new HuntLifetime(minutes('HUNT_MAX_AGE_MINUTES',120),minutes('HUNT_EMPTY_MINUTES',2),
         env.HUNT_STARTUP_GRACE_MINUTES===undefined?0:minutes('HUNT_STARTUP_GRACE_MINUTES',1),
-        minutes('HUNT_SILENT_MINUTES',15),minutes('HUNT_UNREADY_GRACE_MINUTES',5));
+        minutes('HUNT_SILENT_MINUTES',15),minutes('HUNT_UNREADY_GRACE_MINUTES',5),env.HUNT_SILENT_KILL==='1');
 }
