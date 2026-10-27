@@ -17,6 +17,8 @@ usage: $0 --ref <branch|tag|commit> [options]
   --service <unit>      default dr-worker-deploy
   --url <url>           health URL; default http://127.0.0.1:61001/gameservers
   --force               swap even if games are running
+  --prepare-only        fetch and build into <app-dir>.new and stop; nothing is stopped or swapped
+  --activate-only       swap in the build left by --prepare-only (no fetch or build), then health-check and roll back if needed
 EOF
   exit 2
 }
@@ -29,6 +31,7 @@ service=dr-worker-deploy
 health=http://127.0.0.1:61001/gameservers
 ref=
 force=0
+mode=all
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --repo) repo=$2; shift 2 ;;
@@ -39,6 +42,8 @@ while [ "$#" -gt 0 ]; do
     --service) service=$2; shift 2 ;;
     --url) health=$2; shift 2 ;;
     --force) force=1; shift ;;
+    --prepare-only) mode=prepare; shift ;;
+    --activate-only) mode=activate; shift ;;
     *) usage ;;
   esac
 done
@@ -46,25 +51,34 @@ done
 for c in git node npm curl; do command -v "$c" >/dev/null 2>&1 || { echo "missing command: $c" >&2; exit 1; }; done
 
 running() { curl -s -m 5 "$health" | sed -n 's/.*"running":\([0-9]*\).*/\1/p' | head -1; }
-if [ "$force" -eq 0 ] && [ "$(running || true)" != "0" ] && [ -n "$(running || true)" ]; then
+if [ "$mode" != prepare ] && [ "$force" -eq 0 ] && [ "$(running || true)" != "0" ] && [ -n "$(running || true)" ]; then
   echo "games are running ($(running)); drain first or pass --force" >&2
   exit 3
 fi
 
-if [ -d "$src/.git" ]; then git -C "$src" fetch --quiet --tags origin; else git clone --quiet "$repo" "$src"; fi
-# a branch name must mean the branch just fetched (origin/<ref>), never an older local copy of it; tags and commits fall through
-git -C "$src" checkout --quiet --force "origin/$ref" 2>/dev/null || git -C "$src" checkout --quiet --force "$ref"
-commit=$(git -C "$src" rev-parse --short HEAD)
-echo "building $ref ($commit)"
+if [ "$mode" != activate ]; then
+  if [ -d "$src/.git" ]; then git -C "$src" fetch --quiet --tags origin; else git clone --quiet "$repo" "$src"; fi
+  # a branch name must mean the branch just fetched (origin/<ref>), never an older local copy of it; tags and commits fall through
+  git -C "$src" checkout --quiet --force "origin/$ref" 2>/dev/null || git -C "$src" checkout --quiet --force "$ref"
+  commit=$(git -C "$src" rev-parse --short HEAD)
+  echo "building $ref ($commit)"
 
-new="$app_dir.new"
-rm -rf "$new"; mkdir -p "$new"
-(cd "$src/UndauntedDeployServer" && npm ci --no-audit --no-fund >/dev/null && npm run build >/dev/null)
-cp -r "$src/UndauntedDeployServer/dist" "$src/UndauntedDeployServer/package.json" "$src/UndauntedDeployServer/package-lock.json" "$new/"
-(cd "$new" && npm ci --omit=dev --no-audit --no-fund >/dev/null)
+  new="$app_dir.new"
+  rm -rf "$new"; mkdir -p "$new"
+  (cd "$src/UndauntedDeployServer" && npm ci --no-audit --no-fund >/dev/null && npm run build >/dev/null)
+  cp -r "$src/UndauntedDeployServer/dist" "$src/UndauntedDeployServer/package.json" "$src/UndauntedDeployServer/package-lock.json" "$new/"
+  (cd "$new" && npm ci --omit=dev --no-audit --no-fund >/dev/null)
 
-# worker scripts and launcher assets (what install-worker.sh copies)
-(cd "$src" && tar --exclude=.git --exclude="*/node_modules" --exclude="*/dist" --exclude="*/build" -cf - deploy UndauntedLauncher/assets) | (cd "$install_root" && tar -xf -)
+  # worker scripts and launcher assets (what install-worker.sh copies)
+  (cd "$src" && tar --exclude=.git --exclude="*/node_modules" --exclude="*/dist" --exclude="*/build" -cf - deploy UndauntedLauncher/assets) | (cd "$install_root" && tar -xf -)
+  echo "$ref $commit" > "$new/.staged-commit"
+fi
+if [ "$mode" = prepare ]; then echo "prepared $ref ($commit) in $new; nothing was stopped"; exit 0; fi
+if [ "$mode" = activate ]; then
+  new="$app_dir.new"
+  [ -f "$new/.staged-commit" ] || { echo "nothing staged in $new" >&2; exit 5; }
+  ref=$(cut -d" " -f1 "$new/.staged-commit"); commit=$(cut -d" " -f2 "$new/.staged-commit")
+fi
 
 systemctl stop "$service" 2>/dev/null || true
 rm -rf "$app_dir.prev"; [ -d "$app_dir" ] && mv "$app_dir" "$app_dir.prev"
