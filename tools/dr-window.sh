@@ -46,7 +46,7 @@ activate)
 check)
   each 'for u in dr-worker-deploy dr-worker-tunnel dr-worker-allowlist; do echo -n "$u "; systemctl is-active $u; done; curl -s -m 5 http://127.0.0.1:61001/gameservers | head -c 200; echo; echo -n "dll "; sha256sum '$GW'/UndauntedInternalServer.dll | cut -c1-8; sudo journalctl -u dr-worker-deploy -n 15 --no-pager | grep -i -E "error|fail" | tail -3' ;;
 rollback)
-  each "sudo systemctl stop dr-worker-deploy; sudo rm -rf /opt/dr-worker/UndauntedDeployServer; sudo mv /opt/dr-worker/UndauntedDeployServer.prev /opt/dr-worker/UndauntedDeployServer; \
+  each "[ -d /opt/dr-worker/UndauntedDeployServer.prev ] || { echo NO .prev, NOTHING TO ROLL BACK; exit 1; }; sudo systemctl stop dr-worker-deploy; sudo rm -rf /opt/dr-worker/UndauntedDeployServer; sudo mv /opt/dr-worker/UndauntedDeployServer.prev /opt/dr-worker/UndauntedDeployServer; \
 sudo cp -p /etc/dr-worker/deploy.env.bak-pre-stage-20261027 /etc/dr-worker/deploy.env; sudo cp -p $GW/UndauntedInternalServer.dll.prev-6f2433ab $GW/UndauntedInternalServer.dll; sudo systemctl start dr-worker-deploy; sleep 5; systemctl is-active dr-worker-deploy" ;;
 *) echo "usage: $0 preflight|prepare|activate|check|rollback" >&2; exit 2 ;;
 esac
