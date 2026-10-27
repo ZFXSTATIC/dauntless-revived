@@ -113,7 +113,7 @@ export class AllowlistFeed {
     private WarnDown(Detail: string){
         const Suppressed = this.Warnings.Allow("down");
         if(Suppressed !== undefined){
-            logger.warn("allowlist helper did not take an address; players who log in now get no game ports until it answers", { detail: Detail, suppressed: Suppressed });
+            logger.warn("allowlist helper did not take an address; players who log in now get no game ports until it answers", { detail: Detail, helperPort: this.Target.port, suppressed: Suppressed });
         }
     }
 
