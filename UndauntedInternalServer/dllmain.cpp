@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include "HuntIdlePolicy.h"
+#include <unordered_map>
 #include "NativeDiagnostics.h"
 #include "ConsoleVisibility.h"
 #include "ConnectedPlayerSnapshot.h"
@@ -874,21 +875,29 @@ void ProcessEventHook(UObject* Object, UFunction* Function, void* Parms) {
         }
         if (Entry->second) return;
     }
-    static UFunction* ServerTryActivateAbilityWithEventData = nullptr;
-    static UFunction* ServerTryActivateAbility = nullptr;
+    // Classify each function once. Building a full name for every ProcessEvent call is far too
+    // expensive on this hot path (tens of thousands of calls per second in a busy hunt).
+    enum : uint8_t { KindOther = 0, KindActivateWithEventData = 1, KindActivate = 2 };
+    uint8_t Kind = KindOther;
+    if (Function) {
+        static thread_local std::unordered_map<UFunction*, uint8_t> AbilityKinds;
+        auto [Entry, Inserted] = AbilityKinds.try_emplace(Function, static_cast<uint8_t>(KindOther));
+        if (Inserted) {
+            const auto Name = Function->GetFullName();
+            if (Name.contains("ServerTryActivateAbilityWithEventData")) Entry->second = KindActivateWithEventData;
+            else if (Name.contains("ServerTryActivateAbility")) Entry->second = KindActivate;
+        }
+        Kind = Entry->second;
+    }
 
-    if (Function == ServerTryActivateAbilityWithEventData || (!ServerTryActivateAbilityWithEventData && Function->GetFullName().contains("ServerTryActivateAbilityWithEventData"))) {
-        ServerTryActivateAbilityWithEventData = Function;
-
+    if (Kind == KindActivateWithEventData) {
         Params::AbilitySystemComponent_ServerTryActivateAbilityWithEventData* ActivateAbilityParams = (Params::AbilitySystemComponent_ServerTryActivateAbilityWithEventData*)Parms;
 
         ServerTryActivateAbilityInternal((UAbilitySystemComponent*)Object, ActivateAbilityParams->AbilityToActivate, ActivateAbilityParams->InputPressed, ActivateAbilityParams->PredictionKey, &ActivateAbilityParams->TriggerEventData);
         // Replaces the native RPC handler; forwarding would activate it twice.
         return;
     }
-    else if (Function == ServerTryActivateAbility || (!ServerTryActivateAbility && Function->GetFullName().contains("ServerTryActivateAbility"))) {
-        ServerTryActivateAbility = Function;
-
+    else if (Kind == KindActivate) {
         Params::AbilitySystemComponent_ServerTryActivateAbility* ActivateAbilityParams = (Params::AbilitySystemComponent_ServerTryActivateAbility*)Parms;
 
         ServerTryActivateAbilityInternal((UAbilitySystemComponent*)Object, ActivateAbilityParams->AbilityToActivate, ActivateAbilityParams->InputPressed, ActivateAbilityParams->PredictionKey, nullptr);
