@@ -11,7 +11,9 @@ REF=dr-stage-restart-sg
 G=/srv/dauntless/BaseGame144/Dauntless
 GW=$G/Archon/Binaries/Win64
 SD=/opt/dr-src/deploy/linux-server
-WORKERS=("canada ubuntu@54.39.111.49 dr_na_new 16" "singapore root@147.79.18.103 rr_sg 10" "london ubuntu@57.129.185.14 dr_ger_new 16")
+ENV_FILE="${DR_WINDOW_ENV:-$HOME/.dr-window.env}"   # per-box values (hosts, key names, limits); see tools/dr-window.env.example
+[ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE (copy tools/dr-window.env.example and fill it in)" >&2; exit 2; }
+. "$ENV_FILE"
 SSH="ssh -o BatchMode=yes -o ConnectTimeout=15 -o LogLevel=ERROR"
 
 stamp() { date -u +%H:%M:%S; }
