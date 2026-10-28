@@ -858,6 +858,53 @@ bool DidDoTravelReset = false;
 
 void* OrigProcessEvent = nullptr;
 
+// Fills Out with the function's full name. Kept apart from the __try helpers because of the std::string.
+static void FunctionNameForLog(UFunction* Function, char* Out, size_t Size) {
+    const auto Name = Function->GetFullName();
+    strncpy_s(Out, Size, Name.c_str(), _TRUNCATE);
+}
+
+static bool ProcessEventFaultFilter(EXCEPTION_POINTERS* Info) {
+    const EXCEPTION_RECORD* Rec = Info->ExceptionRecord;
+    // Only the known bad-pointer read/write at 0xffffffff; everything else keeps unwinding to the crash handler.
+    return Rec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && Rec->NumberParameters >= 2 && Rec->ExceptionInformation[1] == 0xffffffff;
+}
+
+// No C++ objects with destructors here so __try is allowed. Returns false when the call faulted and was dropped.
+static bool ForwardProcessEventGuarded(UObject* Object, UFunction* Function, void* Parms) {
+    __try {
+        reinterpret_cast<void(*)(UObject*, UFunction*, void*)>(OrigProcessEvent)(Object, Function, Parms);
+        return true;
+    } __except (ProcessEventFaultFilter(GetExceptionInformation()) ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+        return false;
+    }
+}
+
+static bool TryFunctionNameForLog(UFunction* Function, char* Out, size_t Size) {
+    __try {
+        FunctionNameForLog(Function, Out, Size);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+// One line per distinct function, capped, so a hot faulting call cannot flood the log.
+static void LogProcessEventFault(UFunction* Function) {
+    static UFunction* Seen[16] = {};
+    static volatile LONG SeenCount = 0;
+    const LONG Count = SeenCount;
+    for (LONG i = 0; i < Count && i < 16; ++i) if (Seen[i] == Function) return;
+    if (InterlockedIncrement(&SeenCount) > 16) return;
+    Seen[SeenCount - 1] = Function;
+    char Name[256] = {};
+    if (!TryFunctionNameForLog(Function, Name, sizeof(Name))) strcpy_s(Name, "unreadable");
+    char Line[400] = {};
+    const int Size = sprintf_s(Line, "processevent_fault_dropped function=%s\n", Name);
+    if (Size > 0) DR_WriteDiagnostic(Line, static_cast<DWORD>(Size));
+}
+
+
 void ProcessEventHook(UObject* Object, UFunction* Function, void* Parms) {
     // This hook is installed only in game servers. Never inspect RPC arguments
     // or infer bans from timing, movement corrections, or server-side calls.
@@ -905,7 +952,11 @@ void ProcessEventHook(UObject* Object, UFunction* Function, void* Parms) {
         return;
     }
 
-    reinterpret_cast<void(*)(UObject*, UFunction*, void*)>(OrigProcessEvent)(Object, Function, Parms);
+    // A bad Object/Function pointer (seen as 0xffffffff) would fault inside the original; drop it here.
+    auto Bad = [](const void* P) { auto V = reinterpret_cast<uintptr_t>(P); return V < 0x10000 || V == 0xffffffff; };
+    if (Bad(Object) || Bad(Function)) return;
+
+    if (!ForwardProcessEventGuarded(Object, Function, Parms)) LogProcessEventFault(Function);
 }
 
 void* OrigConfigCacheIniGetString = nullptr;
