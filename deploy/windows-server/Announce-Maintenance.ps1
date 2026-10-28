@@ -2,7 +2,7 @@
 .SYNOPSIS
     Posts a maintenance countdown to the Discord webhook: a first notice, reminders 10 and 2 minutes before, and returns at the start time.
 .DESCRIPTION
-    The webhook URL is read from a private file on the box (default <root>\data\keys\discord-status.key, first line, https URL).
+    The webhook URL is read from a private file on the box (default <root>\data\keys\discord-announcements.key, falling back to discord-status.key, first line, https URL).
     It is never printed or put in git. Use -WebhookFile for a file that points at the announcements channel instead.
     Run it, wait until it returns, then start the restart. -WhatIf prints the two messages and sends nothing.
 .EXAMPLE
@@ -16,7 +16,10 @@ param(
     [string]$Reason = 'a short update with fixes and new creator codes'
 )
 $ErrorActionPreference = 'Stop'
-if (-not $WebhookFile) { $WebhookFile = Join-Path $Root 'data\keys\discord-status.key' }
+if (-not $WebhookFile) {
+    $WebhookFile = Join-Path $Root 'data\keys\discord-announcements.key'
+    if (-not (Test-Path -LiteralPath $WebhookFile)) { $WebhookFile = Join-Path $Root 'data\keys\discord-status.key' }
+}
 $Start = (Get-Date).AddMinutes($Minutes)
 $At = $Start.ToUniversalTime().ToString('HH:mm') + ' UTC'
 $First = "Server maintenance in $Minutes minutes ($At) for $Reason. Servers will be down for about 5 minutes. Please finish your current hunt and return to Ramsgate or the menu before then."
@@ -26,9 +29,9 @@ function Send([string]$Text) {
     if (-not $PSCmdlet.ShouldProcess('announcement webhook', $Text)) { Write-Host "[dry run] $Text"; return }
     $url = (Get-Content -LiteralPath $WebhookFile -TotalCount 1).Trim()
     if ($url -notmatch '^https://') { throw 'The webhook file does not start with an https URL.' }
-    $body = @{ content = ('@everyone ' + $Text); allowed_mentions = @{ parse = @('everyone') } } | ConvertTo-Json -Compress -Depth 4
+    $body = @{ content = ('@here ' + $Text); allowed_mentions = @{ parse = @('everyone') } } | ConvertTo-Json -Compress -Depth 4
     Invoke-RestMethod -Method Post -Uri $url -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
-    Write-Host "$(Get-Date -Format 'HH:mm:ss') sent: @everyone $Text"
+    Write-Host "$(Get-Date -Format 'HH:mm:ss') sent: @here $Text"
 }
 Send $First
 if ($WhatIfPreference) { Send $Mid; Send $Second; return }
