@@ -43,7 +43,7 @@ fs.writeFileSync(path.join(BackupDir, `inventory-${Character.characterId}-${Stam
 const Day = new Date().toISOString().slice(0, 10);
 Db.transaction((tx) => {
   for (const G of Grants) {
-    ApplyInventoryTransactionInTx(tx, {UserId, CharacterId: Character.characterId, TransactionId: `admin-grant:${G.catalogId}:${Day}:${UserId}`, StackedItemsToAdd: [G]}, {Caller: 'admin', Source: 'admin:grant-cells'});
+    ApplyInventoryTransactionInTx(tx, {UserId, CharacterId: Character.characterId, TransactionId: `admin-grant:${G.catalogId}:${Day}:${UserId}${Args.includes('--again') ? ':' + Date.now() : ''}`, StackedItemsToAdd: [G]}, {Caller: 'admin', Source: 'admin:grant-cells'});
   }
 }, {behavior: 'immediate'});
 const After = Grants.map((G) => Held(G.catalogId));
