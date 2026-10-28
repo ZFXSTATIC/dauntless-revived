@@ -15,6 +15,19 @@ NDJSON archives first, checks the archives, deletes in small batches, and can pu
 | `inventorylog` | ~1.6 GB | never | Append-only item ledger. Store revocation (`controllers/storerevocation.ts`) and `tools/find-uncredited-purchases.sql` look up old rows with no time limit. The script refuses it. |
 | `inventorytransactions` | ~1.25 GB | no need | The retry (idempotency) receipts. The app already deletes receipts older than 30 days on every inventory transaction (`controllers/inventory.ts`, `TRANSACTION_RECORD_DAYS`). Younger ones must stay; the script refuses less than 30 days. |
 
+## What it removes (measured on the 2026-10-28 02:00 backup)
+
+All five tables only go back to 2026-09-30, so a plain "older than 30 days" trim removes nothing. The
+size comes from the app's own retention numbers. With `--keep-days 7 --keep-per-key 20 --hourly-hours 24
+--daily-days 14`:
+
+| Table | Rows | Removed | Row data freed (estimate) |
+|---|---|---|---|
+| `characterhistory` | 868,074 | 470,771 | ~9.7 GB |
+| `loadouthistory` | 386,618 | 178,666 | ~1.4 GB |
+
+On a test copy the archives came to about 1/7 of the row data (gzip).
+
 ## How the file gets smaller
 
 Deleting rows does not shrink `undaunted.db`: the pages go on SQLite's free list and are reused by new
