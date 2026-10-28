@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { readPerformance } from './dashboard-performance.mjs';
 import { fleetSummary } from './dashboard-fleet.mjs';
 import { monitorWorker } from './dashboard-worker.mjs';
+import { readLimits, describeLimits, changeLimit } from './dashboard-limits.mjs';
 
 export function scrubLog(text) {
   return text.split(/\r?\n/).slice(-150).map(line => {
@@ -38,7 +39,7 @@ const cpuTimes = () => os.cpus().reduce((sum, cpu) => {
   return sum;
 }, {idle: 0, total: 0});
 
-export async function startDashboard({key, backend, port = 61110, logs = {}, serverConfig = null, performanceDir = null, workerUrl = null, ausUrl = null, germanyUrl = null, eu2Url = null, fetcher = fetch}) {
+export async function startDashboard({key, backend, port = 61110, logs = {}, serverConfig = null, performanceDir = null, workerUrl = null, ausUrl = null, germanyUrl = null, eu2Url = null, huntLimitsFile = null, fetcher = fetch}) {
   if (typeof key !== 'string' || key.length < 16) throw new Error('An owner key of at least 16 characters is required');
   const target = new URL(backend);
   if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname) || target.username || target.password) throw new Error('Backend must be loopback HTTP');
@@ -114,7 +115,8 @@ export async function startDashboard({key, backend, port = 61110, logs = {}, ser
     if (!/^(127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(req.headers.host ?? '') || req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) { res.writeHead(403).end(); return; }
     const createInvite = req.method === 'POST' && req.url === '/api/invites';
     const moderate = req.method === 'POST' && req.url === '/api/moderation';
-    if (req.method !== 'GET' && !createInvite && !moderate) { res.writeHead(405).end(); return; }
+    const setLimit = req.method === 'POST' && req.url === '/api/hunt-limits';
+    if (req.method !== 'GET' && !createInvite && !moderate && !setLimit) { res.writeHead(405).end(); return; }
     if (Date.now() - windowStart > 60000) { requests = 0; windowStart = Date.now(); }
     if (++requests > 300) { res.writeHead(429).end(); return; }
     if (req.url === '/') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(page); return; }
@@ -122,6 +124,20 @@ export async function startDashboard({key, backend, port = 61110, logs = {}, ser
     const supplied = req.headers['x-dashboard-key'];
     if (typeof supplied !== 'string' || !timingSafeEqual(digest(supplied), digest(key))) { res.writeHead(401).end(); return; }
     res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/api/hunt-limits') {
+      if (!huntLimitsFile) { res.writeHead(404).end(JSON.stringify({error: 'Hunt limits are not set up on this dashboard'})); return; }
+      try {
+        if (setLimit) {
+          if (req.headers.origin !== `http://${req.headers.host}`) { res.writeHead(403).end(); return; }
+          if (req.headers['content-type'] !== 'application/json') { res.writeHead(415).end(); return; }
+          let text = ''; for await (const chunk of req) { text += chunk.toString('utf8'); if (Buffer.byteLength(text) > 1024) { res.writeHead(413).end(); return; } }
+          let body; try { body = JSON.parse(text); } catch { res.writeHead(400).end(JSON.stringify({error: 'Invalid request'})); return; }
+          await changeLimit(huntLimitsFile, huntLimitsFile.replace(/\.json$/, '') + '.audit.log', body?.key, body?.limit === null ? null : body?.limit, body?.note);
+        }
+        res.end(JSON.stringify(describeLimits(await readLimits(huntLimitsFile))));
+      } catch (error) { res.writeHead(error.status ?? 503).end(JSON.stringify({error: error.status ? error.message : 'Hunt limits file unavailable'})); }
+      return;
+    }
     if(req.url?.startsWith('/api/moderation-log?')) {
       const query=new URL(req.url,'http://localhost').searchParams;
       const kind=query.get('kind'),offset=Number(query.get('offset')??0);
@@ -247,7 +263,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const port = Number(process.env.DASHBOARD_PORT || 61110);
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid dashboard port');
     const serverConfig = process.env.DASHBOARD_SERVER_CONFIG ? JSON.parse(await readFile(process.env.DASHBOARD_SERVER_CONFIG, 'utf8')) : null;
-    await startDashboard({key, backend: process.env.DASHBOARD_BACKEND || 'http://127.0.0.1:61000', port, logs, serverConfig, performanceDir: process.env.DASHBOARD_PERFORMANCE_DIR || null, workerUrl: process.env.DASHBOARD_WORKER_URL || null, ausUrl: process.env.DASHBOARD_AUS_URL || null, germanyUrl: process.env.DASHBOARD_GERMANY_URL || null, eu2Url: process.env.DASHBOARD_EU2_URL || null});
+    await startDashboard({key, backend: process.env.DASHBOARD_BACKEND || 'http://127.0.0.1:61000', port, logs, serverConfig, performanceDir: process.env.DASHBOARD_PERFORMANCE_DIR || null, workerUrl: process.env.DASHBOARD_WORKER_URL || null, ausUrl: process.env.DASHBOARD_AUS_URL || null, germanyUrl: process.env.DASHBOARD_GERMANY_URL || null, eu2Url: process.env.DASHBOARD_EU2_URL || null, huntLimitsFile: process.env.DASHBOARD_HUNT_LIMITS_FILE || null});
     console.log(`Owner dashboard: http://127.0.0.1:${port} (use an SSH tunnel remotely)`);
   })().catch(() => { console.error('Dashboard startup failed. Check owner key file, settings and port.'); process.exitCode = 1; });
 }

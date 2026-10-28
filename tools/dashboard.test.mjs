@@ -260,3 +260,27 @@ test('slow moderation completes once and account totals are cached across polls'
     assert.equal(users,1);
   } finally {await new Promise(resolve=>server.close(resolve));}
 });
+
+test('hunt limits need the owner key and same origin, accept only 1 to 64 or empty, and leave an audit line', async () => {
+  const key = 'test-owner-key-not-a-real-secret';
+  const dir = await mkdtemp(join(tmpdir(), 'limits-')), file = join(dir, 'hunt-limits.json');
+  const server = await startDashboard({key, port: 0, backend: 'http://127.0.0.1:61000', huntLimitsFile: file, fetcher: async url =>
+    ({ok: true, json: async () => url.pathname.endsWith('GetAllUsers') ? {Users: []} : {players: [], instances: [], playersOnline: 0}})});
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const send = (body, extra = {}) => fetch(base + '/api/hunt-limits', {method: 'POST', headers: {'x-dashboard-key': key, origin: base, 'content-type': 'application/json', ...extra}, body: JSON.stringify(body)});
+    assert.equal((await fetch(base + '/api/hunt-limits')).status, 401);
+    assert.equal((await send({key: 'sg', limit: 5}, {'x-dashboard-key': 'wrong'})).status, 401);
+    assert.equal((await send({key: 'sg', limit: 5}, {origin: 'https://evil.example'})).status, 403);
+    for (const body of [{key: 'sg', limit: 0}, {key: 'sg', limit: 65}, {key: 'sg', limit: 2.5}, {key: 'sg', limit: '5'}, {key: 'sg'}, {key: 'nope', limit: 5}]) assert.equal((await send(body)).status, 400);
+    assert.equal((await send({key: 'sg', note: 'x'.repeat(3000), limit: 5})).status, 413);
+    const set = await (await send({key: 'sg', limit: 6, note: 'night\nshift'})).json();
+    assert.equal(set.keys.find(k => k.key === 'sg').limit, 6);
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), {sg: 6});
+    await send({key: 'sg', limit: null});
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), {});
+    const audit = (await readFile(join(dir, 'hunt-limits.audit.log'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+    assert.deepEqual(audit.map(a => [a.key, a.from, a.to]), [['sg', null, 6], ['sg', 6, null]]);
+    assert.equal(audit[0].note, 'night shift');
+  } finally { await new Promise(resolve => server.close(resolve)); await rm(dir, {recursive: true, force: true}); }
+});

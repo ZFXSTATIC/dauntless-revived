@@ -170,6 +170,7 @@
       renderWorker(result.aus,'aus');
       renderWorker(result.germany,'germany');
       el('login').hidden = true; el('data').hidden = false;
+      if (!limitsLoaded) loadLimits();
       el('invites').hidden = !result.invitesEnabled;
       el('invitesUnavailable').hidden = result.invitesEnabled;
       el('connection').textContent = result.error ? 'Backend unavailable · stale' : 'Connected · private access';
@@ -319,6 +320,41 @@
     catch { el('inviteLink').select(); el('inviteStatus').textContent = 'Press Ctrl+C to copy the selected link.'; }
   };
   el('refreshLog').onclick = async () => { if (!key || !el('logs').value) return; try { el('logText').textContent = (await get(`/api/log?name=${encodeURIComponent(el('logs').value)}`)).text; } catch (error) { el('logText').textContent = error.message; } };
+  let limitsLoaded = false;
+  function drawLimits(result) {
+    const body = el('limitRows'); body.replaceChildren();
+    for (const row of result.keys) {
+      const tr = document.createElement('tr'), name = document.createElement('td'), now = document.createElement('td'), edit = document.createElement('td'), act = document.createElement('td');
+      const input = document.createElement('input'), save = document.createElement('button');
+      name.textContent = row.name; now.textContent = row.limit === null ? 'host setting' : String(row.limit);
+      input.type = 'number'; input.min = '1'; input.max = String(result.max); input.step = '1'; input.value = row.limit === null ? '' : String(row.limit);
+      input.setAttribute('aria-label', `New hunt limit for ${row.name}`);
+      save.textContent = 'Save';
+      save.onclick = async () => {
+        const text = input.value.trim(), limit = text === '' ? null : Number(text);
+        if (limit !== null && !(Number.isInteger(limit) && limit >= 1 && limit <= result.max)) { el('limitStatus').textContent = `Use a whole number from 1 to ${result.max}, or leave empty.`; return; }
+        save.disabled = true; el('limitStatus').textContent = 'Saving…';
+        try {
+          const response = await fetch('/api/hunt-limits', {method: 'POST', headers: {'x-dashboard-key': key, 'content-type': 'application/json'}, body: JSON.stringify({key: row.key, limit}), signal: AbortSignal.timeout(15000)});
+          const saved = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(saved.error || `Change refused (${response.status}).`);
+          drawLimits(saved); el('limitStatus').textContent = `${row.name}: ${limit === null ? 'back to the host setting' : 'limit ' + limit}. Applies to the next hunt request.`;
+        } catch (error) { el('limitStatus').textContent = error.message; save.disabled = false; }
+      };
+      edit.append(input); act.append(save); tr.append(name, now, edit, act); body.append(tr);
+    }
+  }
+  async function loadLimits() {
+    if (!key) return;
+    try {
+      const response = await fetch('/api/hunt-limits', {headers: {'x-dashboard-key': key}, signal: AbortSignal.timeout(15000)});
+      limitsLoaded = true;
+      if (response.status === 404) { el('limits').hidden = true; return; }
+      if (!response.ok) throw new Error('Hunt limits unavailable.');
+      el('limits').hidden = false; drawLimits(await response.json()); el('limitStatus').textContent = '';
+    } catch (error) { el('limits').hidden = false; el('limitStatus').textContent = error.message; }
+  }
+  el('refreshLimits').onclick = loadLimits;
   setInterval(refresh, 5000);
   document.addEventListener('visibilitychange', refresh);
 })();

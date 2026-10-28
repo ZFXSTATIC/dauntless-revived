@@ -16,7 +16,7 @@ $dir = Join-Path $Root 'dashboard'
 foreach ($path in @($Root, (Join-Path $Root 'data'), $dir, $P.Config, $P.Keys, $P.Logs, $P.OwnerKey, $P.ServerJson, $P.MetaEnv)) {
     if (Test-DRReparsePoint $path) { throw "Refusing linked path: $path" }
 }
-$files = @('dashboard.mjs','dashboard-performance.mjs','dashboard-fleet.mjs','dashboard-worker.mjs','dashboard-client.js','dashboard.html')
+$files = @('dashboard.mjs','dashboard-performance.mjs','dashboard-fleet.mjs','dashboard-worker.mjs','dashboard-limits.mjs','dashboard-client.js','dashboard.html')
 foreach ($file in $files) {
     if (-not (Test-Path -LiteralPath (Join-Path $P.App "tools\$file"))) { throw 'Update the server code before installing the dashboard.' }
 }
@@ -41,9 +41,18 @@ $envMap = [ordered]@{
     DASHBOARD_PORT = '61110'
     DASHBOARD_LOG_CONFIG_FILE = $logConfig.Replace('\', '/')
     DASHBOARD_PERFORMANCE_DIR = (Join-Path $P.Logs 'performance').Replace('\', '/')
+    DASHBOARD_HUNT_LIMITS_FILE = (Join-Path $P.Config 'hunt-limits.json').Replace('\', '/')
 }
 if ((Get-DRMode $Cfg) -eq 'Public') { $envMap['DASHBOARD_SERVER_CONFIG'] = $P.ServerJson.Replace('\', '/') }
 [void](Write-DREnv (Join-Path $dir 'dashboard.env') $envMap @('Private owner dashboard. No credentials in this file.'))
+# Hunt limits: the dashboard writes this one file and its audit log (and nothing else in config); the deploy server only reads it.
+foreach ($name in @('hunt-limits.json', 'hunt-limits.audit.log')) {
+    $limitFile = Join-Path $P.Config $name
+    if (Test-DRReparsePoint $limitFile) { throw "Refusing linked path: $limitFile" }
+    if (-not (Test-Path -LiteralPath $limitFile)) { Write-DRText $limitFile $(if ($name -like '*.json') { '{}' } else { '' }) }
+    icacls.exe $limitFile /grant '*S-1-5-19:M' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Hunt limits file ACL failed' }
+}
 # Node resolves parent directories before reading its configuration. Grant only
 # these directories RX: no inheritance and no recursive access to other secrets.
 foreach ($path in @($Root, (Join-Path $Root 'data'), $P.Config, $P.Keys)) {
