@@ -21,7 +21,7 @@ if (!UserId || !/^UID-[0-9a-f-]{36}$/.test(UserId) || Specs.length === 0) { cons
 const Grants = Specs.map((Spec) => {
   const [Id, Qty] = Spec.split('=');
   const Quantity = Qty === undefined ? 1 : Number(Qty);
-  const Orb = ['ORB_FLAME', 'ORB_FROST', 'ORB_SHOCK', 'ORB_TERRA', 'ORB_PHYSICAL'].includes(Id);
+  const Orb = ['ORB_FLAME', 'ORB_FROST', 'ORB_SHOCK', 'ORB_TERRA', 'ORB_PHYSICAL', 'GEM_ALPHA', 'GEM_HEROIC', 'GEM_HEROICPLUS'].includes(Id);
   const M = /^CELL_([A-Z0-9_]+)_(UC|R|E)$/.exec(Id);
   if (!Orb && (!M || !Families.has(M[1]))) throw new Error(`not a known cell or orb id: ${Id}`);
   if (!Number.isInteger(Quantity) || Quantity < 1 || Quantity > (Orb ? 1000 : 10)) throw new Error(`bad quantity for ${Id}`);
