@@ -25,15 +25,15 @@ $At = $Start.ToUniversalTime().ToString('HH:mm') + ' UTC'
 $First = "Server maintenance in $Minutes minutes ($At) for $Reason. Servers will be down for about 5 minutes. Please finish your current hunt and return to Ramsgate or the menu before then."
 $Mid = "Reminder: the servers restart in 10 minutes ($At). Please finish your current hunt."
 $Second = "Reminder: the servers restart in 2 minutes ($At). Finish or leave your hunt now. We will post when we are back."
-function Send([string]$Text) {
+function Send([string]$Text, [bool]$Ping = $false) {
     if (-not $PSCmdlet.ShouldProcess('announcement webhook', $Text)) { Write-Host "[dry run] $Text"; return }
     $url = (Get-Content -LiteralPath $WebhookFile -TotalCount 1).Trim()
     if ($url -notmatch '^https://') { throw 'The webhook file does not start with an https URL.' }
-    $body = @{ content = ('@here ' + $Text); allowed_mentions = @{ parse = @('everyone') } } | ConvertTo-Json -Compress -Depth 4
+    $body = @{ content = ($(if ($Ping) { '@here ' } else { '' }) + $Text); allowed_mentions = @{ parse = @('everyone') } } | ConvertTo-Json -Compress -Depth 4
     Invoke-RestMethod -Method Post -Uri $url -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
-    Write-Host "$(Get-Date -Format 'HH:mm:ss') sent: @here $Text"
+    Write-Host "$(Get-Date -Format 'HH:mm:ss') sent: $(if ($Ping) { '@here ' })$Text"
 }
-Send $First
+Send $First $true
 if ($WhatIfPreference) { Send $Mid; Send $Second; return }
 foreach ($step in @(@(10, $Mid), @(2, $Second))) {
     if ($Minutes -le $step[0]) { continue }
