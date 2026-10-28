@@ -1,5 +1,6 @@
 import { CapacityUnavailable, HuntLimit } from './capacity';
 import { logger } from '../logger';
+import { LimitOverride, LimitKeyForUrl } from './huntlimits';
 
 type Request = { GameMode: string; GameArgs: string; HuntId: string; ExpectedPlayers: string[] | undefined; Overflow?: boolean };
 type Connection = { host: string; port: number };
@@ -27,6 +28,16 @@ export async function RemoteLaunch(url: URL, body: Request): Promise<Connection 
         const status = await probe.json() as any;
         if (!probe.ok || !Array.isArray(status.servers)) return undefined;
         logger.info({huntId:body.HuntId, worker:status.capacity ?? {running:status.servers.filter((s:any)=>['hunt','tutorial'].includes(s.kind)).length}}, 'routing: worker capacity');
+        // The owner's live limit for this worker. It gates new hunts only; the worker's own MAX_HUNTS stays the ceiling.
+        const key = LimitKeyForUrl(url), live = key ? LimitOverride(key) : null;
+        if (live !== null) {
+            const busy = status.capacity ? Number(status.capacity.running) + Number(status.capacity.pending)
+                : status.servers.filter((s:any)=>['hunt','tutorial'].includes(s.kind)).length;
+            if (!Number.isFinite(busy) || busy >= live) {
+                logger.info({huntId:body.HuntId,worker:key,busy,limit:live}, 'routing: worker at owner limit');
+                return undefined;
+            }
+        }
     } catch { logger.warn({huntId:body.HuntId}, 'routing: worker probe unavailable'); return undefined; }
     let response: Response;
     try {

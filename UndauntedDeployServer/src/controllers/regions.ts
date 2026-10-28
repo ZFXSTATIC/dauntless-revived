@@ -1,7 +1,8 @@
 import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CapacityUnavailable } from './capacity';
-import { RemoteLaunch, ReadWorkerSnapshot, GameserverSnapshot } from './overflow';
+import { RemoteLaunch, ReadWorkerSnapshot, GameserverSnapshot, OverflowUrl } from './overflow';
+import { SetUrlKeyResolver } from './huntlimits';
 
 export type RegionChoice = 'main' | 'aus' | 'ger' | 'us' | 'sg' | 'mixed';
 type Request = Parameters<typeof RemoteLaunch>[1];
@@ -54,6 +55,13 @@ export function AusUrls(region: WorkerRegion = 'aus'): URL[] {
 export function AusUrl(region: WorkerRegion = 'aus') {
     return AusUrls(region)[0];
 }
+SetUrlKeyResolver(url => {
+    for (const region of ['us', 'ger', 'sg'] as const) {
+        try { if (AusUrls(region).some(worker => worker.origin === url.origin)) return region; } catch { /* bad setting: not this region */ }
+    }
+    try { if (OverflowUrl()?.origin === url.origin) return 'overflow'; } catch { /* ignore */ }
+    return undefined;
+});
 export function Utilization(load: Load) {
     return load.limit && load.limit > 0 ? (load.running + load.pending) / load.limit : Infinity;
 }

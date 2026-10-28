@@ -1,11 +1,15 @@
 import os from 'node:os';
 import { existsSync } from 'node:fs';
+import { LimitOverride } from './huntlimits';
 
 export class CapacityUnavailable extends Error {
     constructor(public readonly reason: 'memory' | 'ports' | 'hunts' | 'cpu') { super(`Game-server capacity unavailable: ${reason}`); }
 }
 
 export function HuntLimit() {
+    // The owner's live limit for this host, if the dashboard set one. Workers are gated by MAIN instead.
+    const live = process.env.HUNT_WORKER === '1' ? null : LimitOverride('main');
+    if (live !== null) return live;
     const name = process.env.HUNT_WORKER === '1' ? 'MAX_HUNTS' : 'MAX_LOCAL_HUNTS';
     if (process.env[name] === 'auto') {
         if (process.env.GAMESERVER_CPU_GUARD !== '1' || process.env.GAMESERVER_MEMORY_GUARD === '0')
