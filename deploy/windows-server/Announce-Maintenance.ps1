@@ -26,9 +26,9 @@ function Send([string]$Text) {
     if (-not $PSCmdlet.ShouldProcess('announcement webhook', $Text)) { Write-Host "[dry run] $Text"; return }
     $url = (Get-Content -LiteralPath $WebhookFile -TotalCount 1).Trim()
     if ($url -notmatch '^https://') { throw 'The webhook file does not start with an https URL.' }
-    $body = @{ content = $Text } | ConvertTo-Json -Compress
+    $body = @{ content = ('@everyone ' + $Text); allowed_mentions = @{ parse = @('everyone') } } | ConvertTo-Json -Compress -Depth 4
     Invoke-RestMethod -Method Post -Uri $url -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
-    Write-Host "$(Get-Date -Format 'HH:mm:ss') sent: $Text"
+    Write-Host "$(Get-Date -Format 'HH:mm:ss') sent: @everyone $Text"
 }
 Send $First
 if ($WhatIfPreference) { Send $Mid; Send $Second; return }
