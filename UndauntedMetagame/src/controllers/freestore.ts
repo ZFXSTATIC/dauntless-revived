@@ -237,7 +237,7 @@ function IsRepeatable(Offer: StoreOffer){
 
 function IsListed(Offer: StoreOffer){
     // Sold for Rams only (controllers/ramspricing.ts sets its 5,000 price): never listed free when the Rams store is off
-    if (Offer.id === "bundle_armour_ramsguard_scout" && process.env.STORE_RAMS !== "1") return false;
+    if (Offer.id === "bundle_armour_ramsguard_scout" && process.env.STORE_RAMS !== "1" && !process.env.STORE_RAMS_TEST_ACCOUNT) return false;
     if (Offer.id.startsWith("single_dye_sheen_") || Offer.entitlements?.some(Grant => Grant.name.startsWith("ent_dye_sheen_"))) return false;
     const LadyLuckOffer = LADY_LUCK_IDS.has(Offer.id);
     const MiddlemanOffer = MIDDLEMAN_VENDOR_IDS.has(Offer.id) || MIDDLEMAN_OFFER_IDS.has(Offer.id);
