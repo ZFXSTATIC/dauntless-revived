@@ -10,7 +10,8 @@ const path = require('node:path');
 const {GetDb} = require('../dist/db');
 const {ApplyInventoryTransactionInTx} = require('../dist/controllers/inventory');
 const {GetActiveCharacter} = require('../dist/controllers/activecharacter');
-const Families = new Set(require('../src/vendor/store_middleman_cells.json').families.map((F) => F.id));
+// LANTERN_TAP_EFFECTIVENESS (Zeal) is not in the middleman list but live DR players already hold CELL_LANTERN_TAP_EFFECTIVENESS_UC/R/E.
+const Families = new Set([...require('../src/vendor/store_middleman_cells.json').families.map((F) => F.id), 'LANTERN_TAP_EFFECTIVENESS']);
 const Args = process.argv.slice(2);
 const Apply = Args.includes('--apply');
 const BackupAt = Args.indexOf('--backup-dir');
