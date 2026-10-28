@@ -146,3 +146,73 @@ it("the audit log records the grant source and only one permanent receipt", asyn
     assert.deepEqual(Log, [{catalogId: "CURRENCY_NOTES", quantityChange: 10000, caller: "store", source: "creator:Void"}]);
     assert.equal(GetDb().select().from(onetimejobs).where(eq(onetimejobs.jobId, `creator:void:${A.UserId}`)).all().length, 1);
 });
+
+import { entitlements } from "../src/db/schema";
+import { ListEntitlements } from "../src/controllers/entitlements";
+
+const ORBS = ["ORB_FLAME", "ORB_FROST", "ORB_SHOCK", "ORB_TERRA", "ORB_PHYSICAL"];
+
+it("TheFool grants 20 of each orb once per account, separately from Void", async () => {
+    const A = await MakePlayer();
+    const R = await Call("POST", "/creator", {as: A.UserId, body: {slug: "  thefool "}});
+    assert.equal(R.status, 200);
+    assert.equal(R.json.slug, "TheFool");
+    assert.deepEqual(R.json.granted, ORBS.map(catalogId => ({catalogId, quantity: 20})));
+    for(const Orb of ORBS) assert.equal(StackQuantity(A.CharacterId, Orb), 20);
+    assert.equal(StackQuantity(A.CharacterId, "CURRENCY_NOTES"), 0);
+    assert.equal((await Call("POST", "/creator", {as: A.UserId, body: {slug: "THEFOOL"}})).status, 409);
+    for(const Orb of ORBS) assert.equal(StackQuantity(A.CharacterId, Orb), 20);
+    assert.equal(GetCreatorSupport(A.UserId).slug, "TheFool");
+    assert.equal((await Call("POST", "/creator", {as: A.UserId, body: {slug: "Void"}})).status, 200);
+    assert.equal(GetCreatorSupport(A.UserId).slug, "Void");
+    assert.equal(GetDb().select().from(onetimejobs).where(eq(onetimejobs.jobId, `creator:thefool:${A.UserId}`)).all().length, 1);
+    const Log = GetDb().$client.prepare("SELECT catalogId, quantityChange, source FROM inventorylog WHERE userId=? AND source='creator:TheFool'").all(A.UserId);
+    assert.equal(Log.length, ORBS.length);
+});
+
+it("TheFool refuses a full or invalid orb stack without consuming the code", async () => {
+    const A = await MakePlayer();
+    GetDb().insert(inventory).values({characterId: A.CharacterId, stackedItems: "[]", instancedItems: "[]"}).run();
+    for(const quantity of [-1, "5", 2147483647, 1.5]){
+        GetDb().update(inventory).set({stackedItems: JSON.stringify([{catalogId: "ORB_TERRA", quantity}])}).where(eq(inventory.characterId, A.CharacterId)).run();
+        assert.equal((await Call("POST", "/creator", {as: A.UserId, body: {slug: "TheFool"}})).status, 409);
+        assert.equal(GetCreatorSupport(A.UserId).success, false);
+        assert.equal(StackQuantity(A.CharacterId, "ORB_FLAME"), 0);
+    }
+    GetDb().update(inventory).set({stackedItems: JSON.stringify([{catalogId: "ORB_TERRA", quantity: 2147483627}])}).where(eq(inventory.characterId, A.CharacterId)).run();
+    RedeemCreatorCode(A.UserId, "TheFool");
+    assert.equal(StackQuantity(A.CharacterId, "ORB_TERRA"), 2147483647);
+});
+
+for(const Code of ["ZFXSTATIC", "ZEDFXSTATIC"]){
+    it(`${Code} grants a 48 hour escalation boost once per account`, async () => {
+        const A = await MakePlayer();
+        const R = await Call("POST", "/creator", {as: A.UserId, body: {slug: ` ${Code.toLowerCase()} `}});
+        assert.equal(R.status, 200);
+        assert.equal(R.json.slug, Code);
+        assert.deepEqual(R.json.grantedEntitlement, {name: "escalation_xp_boost_entitlement", duration: 48});
+        assert.equal(ListEntitlements(A.UserId).find(E => E.name === "escalation_xp_boost_entitlement")?.duration, 48);
+        assert.equal((await Call("POST", "/creator", {as: A.UserId, body: {slug: Code}})).status, 409);
+        assert.equal(ListEntitlements(A.UserId).find(E => E.name === "escalation_xp_boost_entitlement")?.duration, 48);
+        const Row = GetDb().select().from(entitlements).where(eq(entitlements.accountId, A.UserId)).all().find(E => E.name === "escalation_xp_boost_entitlement");
+        assert.equal(Row?.source, `creator:${Code}`);
+        assert.equal(GetCreatorSupport(A.UserId).slug, Code);
+        assert.equal(StackQuantity(A.CharacterId, "CURRENCY_NOTES"), 0);
+        assert.equal(GetDb().select().from(onetimejobs).where(eq(onetimejobs.jobId, `creator:${Code.toLowerCase()}:${A.UserId}`)).all().length, 1);
+    });
+}
+
+it("each boost code has its own receipt, so both stack to 96 hours", async () => {
+    const A = await MakePlayer();
+    RedeemCreatorCode(A.UserId, "ZFXSTATIC");
+    RedeemCreatorCode(A.UserId, "ZEDFXSTATIC");
+    assert.equal(ListEntitlements(A.UserId).find(E => E.name === "escalation_xp_boost_entitlement")?.duration, 96);
+});
+
+it("unknown or near-miss codes for the new set are 404 and burn nothing", async () => {
+    const A = await MakePlayer();
+    for(const slug of ["The Fool", "TheFool2", "ZFX STATIC", "ZFXSTATICS", "ZEDFX"]){
+        assert.equal((await Call("POST", "/creator", {as: A.UserId, body: {slug}})).status, 404);
+    }
+    assert.equal(GetCreatorSupport(A.UserId).success, false);
+});
