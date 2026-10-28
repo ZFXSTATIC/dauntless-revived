@@ -30,6 +30,7 @@ param(
     [Parameter(ParameterSetName = 'Dir', Mandatory = $true)][string]$SourceDir,
     [Parameter(ParameterSetName = 'Rollback', Mandatory = $true)][switch]$Rollback,
     [switch]$Force,
+    [switch]$SkipBackup,
     [int]$HealthTimeoutSec = 180
 )
 $ErrorActionPreference = 'Stop'
