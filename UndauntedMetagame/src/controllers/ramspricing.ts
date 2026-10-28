@@ -25,6 +25,11 @@ export function RamsWireCurrency(currency: string, accountId: string): string {
 // Pilot only. Never enable globally until the 1.4.4 client currency UI is verified.
 export function PriceInRams(offer: StoreOffer, accountId: string): StoreOffer {
     if (!RamsEnabled(accountId) || !offer.tags.includes('webstore')) return offer;
+    if (offer.id === 'bundle_armour_ramsguard_scout') {
+        const jacket = {...offer, notesPrice: 5000, displayDescription: 'Purchase for 5,000 Rams.'};
+        delete jacket.platinumPrice;
+        return jacket;
+    }
     if(offer.entitlements?.length){
         if(!offer.tags.some(t=>t==='dye_armour'||t==='dye_tint') || offer.items?.length) return offer;
         const result={...offer,notesPrice:5000,displayDescription:'Purchase for 5,000 Rams.'};

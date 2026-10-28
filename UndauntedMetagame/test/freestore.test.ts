@@ -28,7 +28,8 @@ const ITEM = "AR_SAINTS19_ROMANTIC_HELM_01";
 
 type Offer = { id: string, tags: string[], platinumPrice: number, items: { catalogId: string, quantity: number }[] | null, entitlements: { name: string }[] | null };
 const Catalog = StoreCatalog as unknown as Record<string, Offer[]> & { webstore: Offer[] };
-const Sellable = Catalog.webstore.filter(Offer => !Offer.id.startsWith("single_dye_sheen_"));
+// The Scout's Jacket is sold for Rams only (ramspricing.ts), so the free store does not list or sell it
+const Sellable = Catalog.webstore.filter(Offer => !Offer.id.startsWith("single_dye_sheen_") && Offer.id !== "bundle_armour_ramsguard_scout");
 const Kinds = StoreItemKinds as unknown as Record<string, string>;
 const ArtRows = new Set((StoreArt as { skus: string[] }).skus);
 

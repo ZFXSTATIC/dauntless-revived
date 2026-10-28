@@ -1331,6 +1331,39 @@
       "missingEntitlementNames": null
     },
     {
+      "id": "bundle_armour_ramsguard_scout",
+      "displayName": "Ramsguard Scout's Jacket",
+      "displayDescription": "Free on this private server.",
+      "displayPriority": 1907,
+      "tags": [
+        "webstore",
+        "skin_armour",
+        "your_offers"
+      ],
+      "platinumPrice": 0,
+      "platinumSalePrice": null,
+      "cellDustPrice": null,
+      "prestigePrice": null,
+      "event01Price": null,
+      "steelMarksPrice": null,
+      "gildedMarksPrice": null,
+      "items": [
+        {
+          "catalogId": "AR_RAMSGUARD_SCOUT_CHEST",
+          "quantity": 1
+        }
+      ],
+      "entitlements": [],
+      "maxAllowed": 1,
+      "remaining": 1,
+      "loadoutSlots": null,
+      "availableFrom": null,
+      "availableTo": null,
+      "timeAvailabilityReason": null,
+      "platformOfferId": null,
+      "missingEntitlementNames": null
+    },
+    {
       "id": "bundle_armour_nighthunter",
       "displayName": "Night Hunter's Armour",
       "displayDescription": "Free on this private server.",

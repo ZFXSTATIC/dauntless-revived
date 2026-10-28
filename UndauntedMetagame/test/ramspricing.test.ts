@@ -47,3 +47,11 @@ test('wire adapter remains disabled without explicit native pilot switch',()=>Wi
     assert.equal(RamsWireOffer(offer,'pilot'),offer);
     assert.equal(RamsWireCurrency('event01','pilot'),'event01');
 }));
+
+test('Ramsguard Scout jacket costs 5000 Rams only for the pilot account',()=>WithEnv({STORE_RAMS_TEST_ACCOUNT:'pilot'},()=>{
+    const jacket:StoreOffer={id:'bundle_armour_ramsguard_scout',tags:['webstore'],platinumPrice:0,remaining:1,entitlements:[],items:[{catalogId:'AR_RAMSGUARD_SCOUT_CHEST',quantity:1}]};
+    const priced=PriceInRams(jacket,'pilot');
+    assert.equal(priced.notesPrice,5000);
+    assert.equal(priced.platinumPrice,undefined);
+    assert.equal(PriceInRams(jacket,'other'),jacket);
+}));
