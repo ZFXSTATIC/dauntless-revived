@@ -58,3 +58,26 @@ module.exports = class Database {
         fs.rmSync(root, { recursive: true, force: true });
     }
 });
+
+test("live backup request survives a slow answer and reports real causes", async () => {
+    const http = require("node:http");
+    const { postLiveBackup } = require(helper);
+    let seen;
+    const server = http.createServer((req, res) => {
+        let data = "";
+        req.on("data", c => data += c);
+        req.on("end", () => {
+            seen = { key: req.headers["x-undaunted-gameserver-apikey"], body: data };
+            setTimeout(() => { res.statusCode = data.includes("busy") ? 409 : 200; res.end("{}"); }, 300);
+        });
+    });
+    await new Promise(r => server.listen(0, "127.0.0.1", r));
+    const url = `http://127.0.0.1:${server.address().port}/internal/backup`;
+    const ok = await postLiveBackup(url, { "x-undaunted-gameserver-apikey": "k" }, { name: "n" }, 5000);
+    assert.deepEqual(ok, { ok: true, status: 200 });
+    assert.equal(seen.key, "k");
+    assert.equal((await postLiveBackup(url, {}, { name: "busy" }, 5000)).status, 409);
+    await assert.rejects(postLiveBackup(url, {}, { name: "n" }, 50), e => e.code === "ETIMEDOUT" && /timed out/.test(e.message));
+    await new Promise(r => server.close(r));
+    await assert.rejects(postLiveBackup(url, {}, { name: "n" }, 5000), e => e.code === "ECONNREFUSED" && /ECONNREFUSED/.test(e.message));
+});

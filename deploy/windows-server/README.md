@@ -28,3 +28,5 @@ Tests for a development PC (no system changes, spare ports 62000-62499 only): `t
 
 Windows PowerShell 5.1, ASCII only. Nothing in the kit prints a key, a token, a password or a `.env`
 value.
+
+`Compress-OldLogs.ps1 [-Root C:\DauntlessRevived] [-Days 7] [-MinFreeGB 15] [-WhatIf]` gzips closed `*.log` files in `data\logs\old` older than 7 days, one at a time at idle priority. It verifies each .gz by reading it back (length and SHA-256) before deleting the original, skips locked files and stops below 15 GB free; progress is in `data\logs\compress-old-logs.log`.

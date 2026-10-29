@@ -14,6 +14,7 @@
 // printed; the metagame stores only SHA-256 hashes of them.
 "use strict";
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
 const crypto = require("crypto");
 const { backupProgress } = require("./backup-policy.cjs");
@@ -39,6 +40,40 @@ function check(Database, file) {
     }
 }
 
+const LIVE_BACKUP_TIMEOUT_MS = 905000;
+
+// POST JSON to the metagame's live-backup endpoint. node:http is used instead of fetch because
+// fetch (undici) gives up after 300 s without response headers and reports only "fetch failed";
+// the metagame answers only when the whole multi-gigabyte copy is done. Errors keep their code
+// and cause in the message.
+function postLiveBackup(url, headers, payload, timeoutMs) {
+    return new Promise((resolve, reject) => {
+        const body = JSON.stringify(payload);
+        const req = http.request(url, {
+            method: 'POST',
+            headers: {...headers, 'content-type': 'application/json', 'content-length': Buffer.byteLength(body)}
+        }, (res) => {
+            res.resume();
+            res.on('end', () => { clearTimeout(timer); resolve({ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode}); });
+            res.on('error', fail);
+        });
+        const timer = setTimeout(() => {
+            const e = new Error(`live backup request timed out after ${Math.round(timeoutMs / 1000)}s; the metagame may still be copying`);
+            e.code = 'ETIMEDOUT';
+            req.destroy(e);
+        }, timeoutMs);
+        function fail(error) {
+            clearTimeout(timer);
+            const detail = [error.code, error.cause?.code, error.cause?.message].filter(Boolean).join(' / ');
+            const e = new Error(`live backup request failed: ${error.message}${detail && !error.message.includes(detail) ? ` (${detail})` : ''}`);
+            e.code = error.code;
+            reject(e);
+        }
+        req.on('error', fail);
+        req.end(body);
+    });
+}
+
 async function main(args = process.argv.slice(2)) {
     const [command, metaDir, dbFile, ...rest] = args;
     if (!command || !metaDir || !dbFile) fail("usage: dr-db.js <command> <metagame dir> <db> [args]");
@@ -60,16 +95,16 @@ async function main(args = process.argv.slice(2)) {
                 const env = require(path.join(path.resolve(metaDir), 'node_modules', 'dotenv')).parse(fs.readFileSync(rest[2]));
                 let response;
                 try {
-                    response = await fetch('http://127.0.0.1:61000/internal/backup', {
-                        method: 'POST', headers: {'content-type': 'application/json', 'x-undaunted-gameserver-apikey': env.METAGAME_API_KEY},
-                        body: JSON.stringify({name: path.basename(path.dirname(dest))}), signal: AbortSignal.timeout(905000)
-                    });
+                    response = await postLiveBackup('http://127.0.0.1:61000/internal/backup', {
+                        'x-undaunted-gameserver-apikey': env.METAGAME_API_KEY
+                    }, {name: path.basename(path.dirname(dest))}, LIVE_BACKUP_TIMEOUT_MS);
                 } catch (error) {
                     // Only a refused connection proves the metagame is stopped. A timeout
                     // may still be copying; do not start another backup in that case.
-                    if (error.cause?.code !== 'ECONNREFUSED') throw error;
+                    if (error.code !== 'ECONNREFUSED') throw error;
                 }
                 if (response?.ok) { console.log(`db ${check(Database, dest)}`); return; }
+                if (response && response.status === 409) throw new Error('Live backup refused (409): another live backup is still running or the folder already holds a copy');
                 if (response && response.status !== 404) throw new Error(`Live backup failed (${response.status})`);
             }
             const db = open(Database, dbFile, true);
@@ -137,6 +172,7 @@ async function main(args = process.argv.slice(2)) {
 }
 
 module.exports = main;
+module.exports.postLiveBackup = postLiveBackup;
 if (require.main === module) main().catch((e) => {
     console.error(`dr-db: ${e.message}`);
     process.exitCode = 1;
