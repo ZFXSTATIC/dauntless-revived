@@ -36,20 +36,21 @@ try { (Get-Process -Id $PID).PriorityClass = 'Idle' } catch { }
 
 Log ("START free={0}GB days={1}" -f (FreeGB), $Days)
 $cutoff = (Get-Date).AddDays(-$Days)
-$files = Get-ChildItem -LiteralPath $old -Filter '*.log' -File | Where-Object { $_.LastWriteTime -lt $cutoff } | Sort-Object LastWriteTime
+$files = Get-ChildItem -LiteralPath $old -Filter '*.log' -File | Where-Object { $_.LastWriteTime -lt $cutoff } | Sort-Object Length -Descending
 $done = 0; $skipped = 0
 foreach ($f in $files) {
     if ((FreeGB) -lt $MinFreeGB) { Log "STOP free space below ${MinFreeGB}GB"; break }
     $gz = "$($f.FullName).gz"
     if (-not $PSCmdlet.ShouldProcess($f.FullName, 'gzip and remove original')) { continue }
     $tmp = "$gz.tmp"
+    Log ("BEGIN {0}  {1:N0} bytes" -f $f.Name, $f.Length)
     try {
         # Open exclusively: a locked or still-written file is skipped.
         $in = [System.IO.File]::Open($f.FullName, 'Open', 'Read', 'None')
         try {
             $out = [System.IO.File]::Create($tmp)
             try {
-                $z = New-Object System.IO.Compression.GZipStream($out, [System.IO.Compression.CompressionLevel]::Optimal)
+                $z = New-Object System.IO.Compression.GZipStream($out, [System.IO.Compression.CompressionLevel]::Fastest)
                 try { $in.CopyTo($z, 1MB) } finally { $z.Dispose() }
             } finally { $out.Dispose() }
         } finally { $in.Dispose() }
@@ -70,4 +71,4 @@ foreach ($f in $files) {
         Log "SKIP $($f.Name): $($_.Exception.Message)"
     }
 }
-Log ("END compressed={0} skipped={1} free={2}GB" -f $done, $skipped, (FreeGB))
+Log ("DONE compressed={0} skipped={1} free={2}GB" -f $done, $skipped, (FreeGB))
