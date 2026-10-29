@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <mutex>
+#include <windows.h>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -77,19 +77,24 @@ namespace ConnectedPlayerSnapshot {
     };
 
     class Cache {
-        std::mutex Mutex;
+        struct Guard {
+            SRWLOCK& L;
+            explicit Guard(SRWLOCK& L_) : L(L_) { AcquireSRWLockExclusive(&L); }
+            ~Guard() { ReleaseSRWLockExclusive(&L); }
+        };
+        SRWLOCK Mutex = SRWLOCK_INIT;
         std::wstring Value;
         std::uint64_t CapturedAt = 0;
 
     public:
         void Publish(std::wstring Header, std::uint64_t Now) {
-            std::lock_guard<std::mutex> Lock(Mutex);
+            Guard Lock(Mutex);
             Value = std::move(Header);
             CapturedAt = Now;
         }
 
         std::wstring Read(std::uint64_t Now) {
-            std::lock_guard<std::mutex> Lock(Mutex);
+            Guard Lock(Mutex);
             if (Now < CapturedAt || Now - CapturedAt > MaxAgeMilliseconds) return {};
             return Value;
         }
