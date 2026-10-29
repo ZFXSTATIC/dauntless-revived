@@ -483,7 +483,9 @@ void GameEngineTickHook(UGameEngine* GameEngine, float DeltaTime, char CanRender
     }();
     static auto PreviousTick = std::chrono::steady_clock::now();
     if (Globals::AmServer && FrameLimit > 0) {
-        std::this_thread::sleep_until(PreviousTick + std::chrono::microseconds(1000000 / FrameLimit));
+        const auto Remaining = std::chrono::duration_cast<std::chrono::microseconds>(
+            PreviousTick + std::chrono::microseconds(1000000 / FrameLimit) - std::chrono::steady_clock::now()).count();
+        if (Remaining > 0) Sleep(static_cast<DWORD>((Remaining + 999) / 1000));
         PreviousTick = std::chrono::steady_clock::now();
     }
 

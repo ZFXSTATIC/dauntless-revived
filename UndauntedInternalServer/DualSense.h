@@ -149,8 +149,9 @@ inline bool GameInFront() {
 
 // Held for a moment: UE4SS polls the keyboard, and a press and release in the same instant is missed.
 inline void TapKey(WORD VirtualKey) {
-    std::thread([VirtualKey] {
-        if (!GameInFront()) return;
+    struct Tap { static DWORD WINAPI Run(LPVOID Arg) {
+        const WORD VirtualKey = static_cast<WORD>(reinterpret_cast<uintptr_t>(Arg));
+        if (!GameInFront()) return 0;
         INPUT Key{};
         Key.type = INPUT_KEYBOARD;
         Key.ki.wVk = VirtualKey;
@@ -160,7 +161,9 @@ inline void TapKey(WORD VirtualKey) {
         Sleep(60);
         Key.ki.dwFlags |= KEYEVENTF_KEYUP;
         SendInput(1, &Key, sizeof(INPUT));
-    }).detach();
+        return 0;
+    } };
+    if (HANDLE Thread = CreateThread(nullptr, 0, Tap::Run, reinterpret_cast<LPVOID>(static_cast<uintptr_t>(VirtualKey)), 0, nullptr)) CloseHandle(Thread);
 }
 
 // Called with every report; acts on presses only.
@@ -417,8 +420,9 @@ inline void Install() {
     if (!Hook(XInput, "XInputGetState", &GetStateHook, &OrigGetState)) return;
     Hook(XInput, "XInputSetState", &SetStateHook, &OrigSetState);
     Hook(XInput, "XInputGetCapabilities", &GetCapabilitiesHook, &OrigGetCapabilities);
-    std::thread(ReaderLoop).detach();
-    std::thread(RumbleLoop).detach();
+    struct Run { static DWORD WINAPI Reader(LPVOID) { ReaderLoop(); return 0; } static DWORD WINAPI Rumble(LPVOID) { RumbleLoop(); return 0; } };
+    if (HANDLE Thread = CreateThread(nullptr, 0, Run::Reader, nullptr, 0, nullptr)) CloseHandle(Thread);
+    if (HANDLE Thread = CreateThread(nullptr, 0, Run::Rumble, nullptr, 0, nullptr)) CloseHandle(Thread);
 }
 
 }
