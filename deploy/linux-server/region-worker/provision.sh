@@ -12,6 +12,12 @@ while [ $# -gt 0 ]; do case "$1" in
 export DEBIAN_FRONTEND=noninteractive
 SRC=/opt/dr-src; IR=/opt/dauntless-revived; HERE=$SRC/deploy/linux-server/region-worker
 G=/srv/dauntless/BaseGame144/Dauntless
+# some providers'"'"' resolvers cannot resolve the game CDN (AU box): add public resolvers
+if ! getent hosts downloads.epcr.lol >/dev/null; then
+  mkdir -p /etc/systemd/resolved.conf.d; printf '[Resolve]
+DNS=1.1.1.1 8.8.8.8
+' > /etc/systemd/resolved.conf.d/dr-dns.conf; systemctl restart systemd-resolved
+fi
 dpkg --add-architecture i386; apt-get update -qq
 apt-get install -y -qq wine wine64 wine32:i386 xvfb nftables git curl ca-certificates python3 ufw openssl >/dev/null
 if ! command -v node >/dev/null || ! node -e 'process.exit(+process.versions.node.split(".")[0]<22)'; then
