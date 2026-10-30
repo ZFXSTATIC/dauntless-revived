@@ -1,0 +1,13 @@
+[Unit]
+Description=DR worker allowlist (nftables)
+After=network-online.target
+Wants=network-online.target
+[Service]
+User=root
+WorkingDirectory=/opt/dauntless-revived
+ExecStart=/usr/local/bin/node --env-file=/etc/dr-worker/allowlist.env /opt/dauntless-revived/deploy/linux-server/allowlist.mjs
+ExecStopPost=/usr/local/bin/node --env-file=/etc/dr-worker/allowlist.env /opt/dauntless-revived/deploy/linux-server/allowlist.mjs --close-ports
+Restart=on-failure
+RestartSec=3
+[Install]
+WantedBy=multi-user.target

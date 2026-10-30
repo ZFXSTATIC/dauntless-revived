@@ -1,0 +1,16 @@
+[Unit]
+Description=DR worker deploy server (Wine game launcher)
+After=network-online.target dr-worker-tunnel.service dr-xvfb.service
+Requires=dr-xvfb.service
+Wants=network-online.target
+[Service]
+User=drworker
+WorkingDirectory=/opt/dr-worker/UndauntedDeployServer
+ExecStart=/usr/local/bin/node --env-file=/etc/dr-worker/deploy.env /opt/dr-worker/UndauntedDeployServer/dist/server.js
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=30
+LimitNOFILE=65536
+[Install]
+WantedBy=multi-user.target

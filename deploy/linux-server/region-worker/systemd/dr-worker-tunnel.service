@@ -1,0 +1,11 @@
+[Unit]
+Description=DR worker SSH tunnel to MAIN (gateway)
+After=network-online.target
+Wants=network-online.target
+[Service]
+User=drworker
+ExecStart=/usr/bin/ssh -NT -i /etc/dr-worker/fleet_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/dr-worker/known_hosts -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -L 127.0.0.1:61000:127.0.0.1:61000 dauntless@@MAIN@
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

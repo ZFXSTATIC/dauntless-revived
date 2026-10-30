@@ -1,0 +1,9 @@
+[Unit]
+Description=Shared virtual display for the Wine game servers
+[Service]
+User=drworker
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1280x720x24 -nolisten tcp -ac
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=multi-user.target
