@@ -16,7 +16,7 @@ test('Automatic is selectable and manual region choices remain available',()=>{
 });
 test('Singapore wins when it is the closest reachable region',async()=>{
     const four:RegionProbe[]=[...probes,{region:'sg',host:'example.com',port:443}];
-    assert.equal(await fastestRegion(four,async p=>({main:260,ger:240,us:190,sg:20}[p.region])),'sg');
+    assert.equal(await fastestRegion(four,async p=>({main:260,ger:240,us:190,sg:20,au:300}[p.region])),'sg');
     assert.equal(await fastestRegion(four,async p=>p.region==='sg'?Infinity:80),'main');
 });
 
