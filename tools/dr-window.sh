@@ -5,9 +5,9 @@
 #   activate   swap and restart all three workers IN PARALLEL with timestamps; MAIN steps are printed (run them at the same moment)
 #   check      go/no-go checks on the workers
 #   rollback   put the previous deploy server, env and DLL back on all three workers in parallel
-# Needs the PC's ssh keys (dr_na_new, rr_sg, dr_ger_new). Branch dr-stage-restart-sg.
+# Needs the PC's ssh keys (dr_na_new, rr_sg, dr_ger_new). Branch au-region.
 set -u
-REF=dr-stage-restart-sg
+REF=au-region
 G=/srv/dauntless/BaseGame144/Dauntless
 GW=$G/Archon/Binaries/Win64
 SD=/opt/dr-src/deploy/linux-server
