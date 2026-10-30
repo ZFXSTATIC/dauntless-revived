@@ -12,7 +12,7 @@ while [ $# -gt 0 ]; do case "$1" in
 export DEBIAN_FRONTEND=noninteractive
 SRC=/opt/dr-src; IR=/opt/dauntless-revived; HERE=$SRC/deploy/linux-server/region-worker
 G=/srv/dauntless/BaseGame144/Dauntless
-# some providers'"'"' resolvers cannot resolve the game CDN (AU box): add public resolvers
+# some provider resolvers cannot resolve the game CDN (AU box): add public resolvers
 if ! getent hosts downloads.epcr.lol >/dev/null; then
   mkdir -p /etc/systemd/resolved.conf.d; printf '[Resolve]
 DNS=1.1.1.1 8.8.8.8
@@ -30,8 +30,7 @@ chmod +x $IR/deploy/linux-server/worker-launch.mjs $IR/deploy/linux-server/ssh-w
 id drworker >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/dauntless-revived-worker --shell /usr/sbin/nologin drworker
 mkdir -p /var/lib/dauntless-revived-worker/proton
 chown -R drworker:drworker /var/lib/dauntless-revived-worker /var/lib/dr-worker /var/log/dr-worker
-# the CDN was unreachable on 2026-10-30; a game tree copied in beforehand (rsync from another worker) is accepted, prepare-game.sh checks the pins
-[ -f $G/Archon/Binaries/Win64/Dauntless-Win64-Shipping.exe ] && [ -f $G/Manifest.bin ] || python3 $HERE/fetch-game.py $G/
+python3 $HERE/fetch-game.py $G/   # hash-checks every file against the R2 mirror (dr-dl.afterlifeinteractive.com); files already copied from another worker are kept if they match
 $IR/deploy/linux-server/prepare-game.sh --game-dir $G --repo $IR
 chmod -R a+rX /srv/dauntless
 cat > /etc/dauntless-revived-worker.env <<EOT
