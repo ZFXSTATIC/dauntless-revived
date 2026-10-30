@@ -57,6 +57,10 @@ for u in dr-xvfb dr-worker-deploy dr-worker-allowlist dr-worker-tunnel dr-worker
   sed "s/@MAIN@/$MAIN/g;s/@DEPLOY_PORT@/$DEPLOY_PORT/g;s/@ALLOW_PORT@/$ALLOW_PORT/g" $HERE/systemd/$u.service > /etc/systemd/system/$u.service; done
 systemctl daemon-reload; systemctl enable --now dr-xvfb; sleep 2
 [ -d /var/lib/dauntless-revived-worker/wineprefix ] || sudo -u drworker env HOME=/var/lib/dauntless-revived-worker WINEPREFIX=/var/lib/dauntless-revived-worker/wineprefix WINEDEBUG=-all DISPLAY=:99 /usr/lib/wine/wine64 wineboot --init >/tmp/wineboot.log 2>&1 || true
+# warm the Wine prefix with the game binary once: the very first hunt launch on a cold prefix exits with code 1
+sudo -u drworker env HOME=/var/lib/dauntless-revived-worker WINEPREFIX=/var/lib/dauntless-revived-worker/wineprefix WINEDEBUG=-all DISPLAY=:99 WINEDLLOVERRIDES=dxgi=n,b timeout 40 /usr/lib/wine/wine64 $G/Archon/Binaries/Win64/Dauntless-Win64-Shipping.exe >/dev/null 2>&1 || true
+install -m 644 $HERE/ssh-key-only.conf /etc/ssh/sshd_config.d/01-key-only.conf   # key-only SSH (new boxes get password-guessing at once)
+sshd -t && systemctl reload ssh
 ufw allow 22/tcp >/dev/null; ufw allow 8700:8775/udp >/dev/null; ufw allow 8800:8810/udp >/dev/null; ufw --force enable >/dev/null
 # the allowlist helper loads the gateway's built ip.js
 (cd $SRC/UndauntedGateway && npm ci --no-audit --no-fund >/dev/null && npm run build >/dev/null && mkdir -p $IR/UndauntedGateway && cp -r dist package.json $IR/UndauntedGateway/)
