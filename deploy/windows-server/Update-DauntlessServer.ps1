@@ -30,6 +30,7 @@ param(
     [Parameter(ParameterSetName = 'Dir', Mandatory = $true)][string]$SourceDir,
     [Parameter(ParameterSetName = 'Rollback', Mandatory = $true)][switch]$Rollback,
     [switch]$Force,
+    [switch]$SkipBackup,   # a verified recent backup exists (tools/ops/dr-restart.sh) or the owner accepted the risk
     [int]$HealthTimeoutSec = 180
 )
 $ErrorActionPreference = 'Stop'
@@ -204,7 +205,8 @@ try {
 
     # 3. Switch
     Write-DRStep 'Switching'
-    if ((Invoke-Kit 'Backup-DauntlessServer.ps1' @('-Root', $Root)) -ne 0) { Stop-DR 'The backup failed; the running server was not touched. The new build stays in app.new.' }
+    if ($SkipBackup) { Write-DRWarn 'skipping the backup (-SkipBackup)' }
+    elseif ((Invoke-Kit 'Backup-DauntlessServer.ps1' @('-Root', $Root)) -ne 0) { Stop-DR 'The backup failed; the running server was not touched. The new build stays in app.new.' }
     [void](Invoke-Kit 'Stack.ps1' @('stop', '-Root', $Root, '-NoBackup'))
     $prevCommit = $installed; $prevRef = Get-DRConfigValue $Cfg 'Ref' ''; $prevKind = Get-DRConfigValue $Cfg 'Source' ''
     try { Switch-DRApp $P }
