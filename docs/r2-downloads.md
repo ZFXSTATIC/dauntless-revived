@@ -5,7 +5,7 @@ Upload only the files listed in `UndauntedContent/data/dauntless-1.4.4.json`, pr
 After the custom domain serves the verified files over HTTPS, set the content service environment:
 
 ```dotenv
-CONTENT_DOWNLOAD_BASE_URL=https://downloads.epcr.lol/dauntless-1.4.4/
+CONTENT_DOWNLOAD_BASE_URL=https://dr-dl.afterlifeinteractive.com/dauntless-1.4.4/
 ```
 
 Restart only the content service. Launcher 0.1.26 and newer read this optional field from the host manifest and fetch game files directly from the CDN. Older launchers continue using the existing authenticated VPS file routes. Remove the variable and restart content to route new download jobs back through the VPS.

@@ -13,7 +13,7 @@ export DEBIAN_FRONTEND=noninteractive
 SRC=/opt/dr-src; IR=/opt/dauntless-revived; HERE=$SRC/deploy/linux-server/region-worker
 G=/srv/dauntless/BaseGame144/Dauntless
 # some providers'"'"' resolvers cannot resolve the game CDN (AU box): add public resolvers
-if ! getent hosts downloads.epcr.lol >/dev/null; then
+if ! getent hosts dr-dl.afterlifeinteractive.com >/dev/null; then
   mkdir -p /etc/systemd/resolved.conf.d; printf '[Resolve]
 DNS=1.1.1.1 8.8.8.8
 ' > /etc/systemd/resolved.conf.d/dr-dns.conf; systemctl restart systemd-resolved

@@ -1,8 +1,8 @@
-# Fetches the pinned Dauntless 1.4.4 tree from the public CDN, hash-checked per file. Safe to re-run.
+# Fetches the pinned Dauntless 1.4.4 tree from the game CDN (own Cloudflare R2), hash-checked per file. Safe to re-run.
 import hashlib, json, os, sys, urllib.request, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 urllib.request.install_opener((lambda o: (o.addheaders.clear(), o.addheaders.append(("User-Agent","Mozilla/5.0 (X11; Linux x86_64)")), o)[2])(urllib.request.build_opener()))
-BASE = "https://downloads.epcr.lol/dauntless-1.4.4/"
+BASE = os.environ.get("DR_GAME_BASE_URL", "https://dr-dl.afterlifeinteractive.com/dauntless-1.4.4/")
 DEST = sys.argv[1] if len(sys.argv) > 1 else "/srv/dauntless/BaseGame144/Dauntless/"
 m = json.load(urllib.request.urlopen(BASE + "manifest.json", timeout=60))
 files = m["files"]
