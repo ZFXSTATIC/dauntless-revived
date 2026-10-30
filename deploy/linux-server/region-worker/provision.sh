@@ -30,7 +30,8 @@ chmod +x $IR/deploy/linux-server/worker-launch.mjs $IR/deploy/linux-server/ssh-w
 id drworker >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/dauntless-revived-worker --shell /usr/sbin/nologin drworker
 mkdir -p /var/lib/dauntless-revived-worker/proton
 chown -R drworker:drworker /var/lib/dauntless-revived-worker /var/lib/dr-worker /var/log/dr-worker
-python3 $HERE/fetch-game.py $G/
+# the CDN was unreachable on 2026-10-30; a game tree copied in beforehand (rsync from another worker) is accepted, prepare-game.sh checks the pins
+[ -f $G/Archon/Binaries/Win64/Dauntless-Win64-Shipping.exe ] && [ -f $G/Manifest.bin ] || python3 $HERE/fetch-game.py $G/
 $IR/deploy/linux-server/prepare-game.sh --game-dir $G --repo $IR
 chmod -R a+rX /srv/dauntless
 cat > /etc/dauntless-revived-worker.env <<EOT
