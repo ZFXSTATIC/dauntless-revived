@@ -83,6 +83,28 @@ describe("Lady Luck Trials store", () => {
         assert.throws(() => CreateStorePurchase(A.UserId, "marksgilded", "ladyluck_weapon_strikers_normal"), {Status: 409});
     });
 
+    it("does not count a crown held in the wrong (instanced) form as owned, so a rebuy delivers it stacked", async () => {
+        const A = await MakePlayer();
+        GetDb().insert(inventory).values({
+            characterId: A.CharacterId,
+            instancedItems: JSON.stringify([{catalogId: "AC_HEAD_TRIALS_00", instanceId: "old-wrong-kind", updateVersion: 0}]),
+            stackedItems: JSON.stringify([{catalogId: "CURRENCY_MARKS_GILDED", quantity: 500}])
+        }).onConflictDoUpdate({
+            target: inventory.characterId,
+            set: {
+                instancedItems: JSON.stringify([{catalogId: "AC_HEAD_TRIALS_00", instanceId: "old-wrong-kind", updateVersion: 0}]),
+                stackedItems: JSON.stringify([{catalogId: "CURRENCY_MARKS_GILDED", quantity: 500}])
+            }
+        }).run();
+
+        assert.equal(GetStoreOffer(A.UserId, "ladyluck_headbling_normal").remaining, 1);
+        Buy(A.UserId, "CURRENCY_MARKS_GILDED", "ladyluck_headbling_normal");
+
+        assert.equal(StackQuantity(A.CharacterId, "AC_HEAD_TRIALS_00"), 1);
+        assert.equal(StackQuantity(A.CharacterId, "CURRENCY_MARKS_GILDED"), 0);
+        assert.equal(GetStoreOffer(A.UserId, "ladyluck_headbling_normal").remaining, 0);
+    });
+
     it("keeps the unlimited cell offer repeatable and charges each purchase atomically", async () => {
         const A = await MakePlayer();
         Credit(A.CharacterId, "CURRENCY_MARKS_STEEL", 300);

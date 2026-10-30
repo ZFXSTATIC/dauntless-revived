@@ -355,7 +355,14 @@ function CheckCurrency(Currency: string){
     return Canonical;
 }
 
-// Every catalogue id the character holds, stacked (quantity above 0) or instanced
+// Every catalogue id the character holds, stacked (quantity above 0) or instanced. An item the store
+// grants in one form only counts as held in that form: a copy in the other list (written by an older,
+// wrong grant kind) is invisible to the client, and counting it would refuse the purchase that repairs it.
+function HeldAs(CatalogId: string, Form: "stacked" | "instanced"){
+    const Kind = GrantKind(CatalogId);
+    return Kind === undefined || Kind === Form;
+}
+
 function HeldCatalogIds(tx: Tx, CharacterId: string | undefined){
     const Held = new Set<string>();
 
@@ -366,13 +373,13 @@ function HeldCatalogIds(tx: Tx, CharacterId: string | undefined){
     const Row = tx.select().from(inventory).where(eq(inventory.characterId, CharacterId)).get();
 
     for(const Stack of ReadStoreInventory(Row?.stackedItems)){
-        if(typeof Stack?.catalogId === "string" && Number(Stack.quantity) > 0){
+        if(typeof Stack?.catalogId === "string" && Number(Stack.quantity) > 0 && HeldAs(Stack.catalogId, "stacked")){
             Held.add(Stack.catalogId);
         }
     }
 
     for(const Instance of ReadStoreInventory(Row?.instancedItems)){
-        if(typeof Instance?.catalogId === "string"){
+        if(typeof Instance?.catalogId === "string" && HeldAs(Instance.catalogId, "instanced")){
             Held.add(Instance.catalogId);
         }
     }
