@@ -118,3 +118,10 @@ test('Singapore with no worker refuses instead of falling back to another region
     write({us: {urls: ['http://127.0.0.1:61041'], hosts: ['na']}});
     await assert.rejects(new RegionalRouter(load, (async () => { throw new Error('should not be called'); }) as any).launch(body as any, 'sg', async () => { throw new Error('no'); }), CapacityUnavailable);
 });
+
+test('Australia is its own region: workers come from the file and a launch stays inside it', async () => {
+    write({au: {urls: ['http://127.0.0.1:61071'], hosts: ['aubox']}, us: {urls: ['http://127.0.0.1:61041'], hosts: ['na']}});
+    assert.deepEqual(AusUrls('au').map(url => url.port), ['61071']);
+    assert.deepEqual(WorkerHosts('au'), ['aubox']);
+    await assert.rejects(new RegionalRouter(load, (async () => ({host: 'elsewhere', port: 8700})) as any).launch(body as any, 'au', async () => { throw new Error('main must not be used'); }));
+});

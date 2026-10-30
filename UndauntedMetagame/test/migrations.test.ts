@@ -120,7 +120,7 @@ describe("migrations after the last release (0013_guilds)", () => {
     it("the new migration files only create tables and indexes", () => {
         for(const Entry of NewEntries){
             // SQLite CHECK constraints require a table rebuild; covered with seeded rows below.
-            if (['0022_germany_region','0028_us_region','0031_sg_region'].includes(Entry.tag)) continue;
+            if (['0022_germany_region','0028_us_region','0031_sg_region','0033_au_region'].includes(Entry.tag)) continue;
             const Sql = fs.readFileSync(path.join(MIGRATIONS, `${Entry.tag}.sql`), "utf8");
             if(Entry.tag === '0029_temporary_bans'){
                 assert.deepEqual(Sql.split('--> statement-breakpoint').map(s=>s.trim()),[
@@ -156,6 +156,10 @@ describe("migrations after the last release (0013_guilds)", () => {
             db.$client.prepare('INSERT INTO huntregions VALUES (?,?)').run('us','us');
             assert.throws(()=>db.$client.prepare('INSERT INTO huntregions VALUES (?,?)').run('missing','us'), /FOREIGN KEY/);
             assert.throws(()=>db.$client.prepare('UPDATE huntregions SET region=? WHERE userId=?').run('unknown','us'), /CHECK/);
+            const beforeAu = Rows(db,'huntregions');
+            db.$client.transaction(() => db.$client.exec(fs.readFileSync(path.join(MIGRATIONS,'0033_au_region.sql'),'utf8')))();
+            assert.deepEqual(Rows(db,'huntregions'), beforeAu);
+            db.$client.prepare('UPDATE huntregions SET region=? WHERE userId=?').run('au','eu');
             assert.deepEqual(db.$client.pragma('foreign_key_check'), []);
         } finally {db.$client.close();}
     });

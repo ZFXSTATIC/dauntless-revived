@@ -33,14 +33,14 @@ gameserversRouter.get("/gameservers", async (req, res) => {
         return;
     }
 
-    const [overflow, aus, germany, us, singapore] = await Promise.all([DescribeOverflowSnapshot(), DescribeAusSnapshot(), DescribeAusSnapshot('ger'), DescribeAusSnapshot('us'), DescribeAusSnapshot('sg')]);
+    const [overflow, aus, germany, us, singapore, australia] = await Promise.all([DescribeOverflowSnapshot(), DescribeAusSnapshot(), DescribeAusSnapshot('ger'), DescribeAusSnapshot('us'), DescribeAusSnapshot('sg'), DescribeAusSnapshot('au')]);
     res.status(200);
     res.json({
         servers: [...DescribeGameservers().map(server => {
             const process=Gameservers.find(s=>s.id===server.id);
             return {...server, connectedPlayers: process ? (process.isRamsgate ? NativeCityOccupancy(process.processId,process.startTime) : NativeReportedOccupancy(process.processId,process.startTime)) : undefined};
-        }), ...overflow.servers, ...aus.servers, ...germany.servers, ...us.servers, ...singapore.servers],
-        complete: overflow.complete && aus.complete && germany.complete && us.complete && singapore.complete,
+        }), ...overflow.servers, ...aus.servers, ...germany.servers, ...us.servers, ...singapore.servers, ...australia.servers],
+        complete: overflow.complete && aus.complete && germany.complete && us.complete && singapore.complete && australia.complete,
         capacity: {...huntAdmission.status(), cpu:cpuAdmission.status()}
     });
 });

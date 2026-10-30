@@ -19,3 +19,8 @@ test('Singapore wins when it is the closest reachable region',async()=>{
     assert.equal(await fastestRegion(four,async p=>({main:260,ger:240,us:190,sg:20}[p.region])),'sg');
     assert.equal(await fastestRegion(four,async p=>p.region==='sg'?Infinity:80),'main');
 });
+
+test('Australia wins when it is the closest reachable region',async()=>{
+    const five:RegionProbe[]=[...probes,{region:'au',host:'example.com',port:443}];
+    assert.equal(await fastestRegion(five,async p=>({main:260,ger:240,us:190,au:20}[p.region])),'au');
+});

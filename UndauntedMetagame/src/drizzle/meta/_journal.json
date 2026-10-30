@@ -232,6 +232,13 @@
       "when": 1792200000004,
       "tag": "0032_key_rotation_catchup",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1792200000005,
+      "tag": "0033_au_region",
+      "breakpoints": true
     }
   ]
 }

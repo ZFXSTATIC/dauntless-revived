@@ -1,4 +1,4 @@
-export type HuntRegion = 'main' | 'aus' | 'ger' | 'us' | 'sg';
+export type HuntRegion = 'main' | 'aus' | 'ger' | 'us' | 'sg' | 'au';
 export type RegionChoice = HuntRegion | 'mixed';
 let readPreference: (userId: string) => HuntRegion = () => 'main';
 export function SetRegionReader(reader: typeof readPreference) { readPreference = reader; }

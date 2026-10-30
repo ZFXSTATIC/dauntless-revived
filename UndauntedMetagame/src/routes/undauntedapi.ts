@@ -51,7 +51,7 @@ undauntedApiRouter.post('/DeviceSignals',HasUndauntedUserApiKey,DeviceSignalRate
 
 undauntedApiRouter.get('/HuntRegion', HasUndauntedUserApiKey, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json({region:GetHuntRegion((req as any).UndauntedUserInfo.UserId), enabled:process.env.US_REGION === '1' || process.env.GERMANY_REGION === '1' || process.env.SG_REGION === '1', probes:RegionProbes()});
+    res.json({region:GetHuntRegion((req as any).UndauntedUserInfo.UserId), enabled:process.env.US_REGION === '1' || process.env.GERMANY_REGION === '1' || process.env.SG_REGION === '1' || process.env.AU_REGION === '1', probes:RegionProbes()});
 });
 undauntedApiRouter.post('/HuntRegion', HasUndauntedUserApiKey, (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -61,6 +61,7 @@ undauntedApiRouter.post('/HuntRegion', HasUndauntedUserApiKey, (req, res) => {
     if (region === 'ger' && process.env.GERMANY_REGION !== '1') { res.status(503).json({error:'region_unavailable'}); return; }
     if (region === 'us' && process.env.US_REGION !== '1') { res.status(503).json({error:'region_unavailable'}); return; }
     if (region === 'sg' && process.env.SG_REGION !== '1') { res.status(503).json({error:'region_unavailable'}); return; }
+    if (region === 'au' && process.env.AU_REGION !== '1') { res.status(503).json({error:'region_unavailable'}); return; }
     SaveHuntRegion((req as any).UndauntedUserInfo.UserId, region);
     res.json({region});
 });
