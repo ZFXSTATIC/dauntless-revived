@@ -58,6 +58,8 @@ for u in dr-xvfb dr-worker-deploy dr-worker-allowlist dr-worker-tunnel dr-worker
 systemctl daemon-reload; systemctl enable --now dr-xvfb; sleep 2
 [ -d /var/lib/dauntless-revived-worker/wineprefix ] || sudo -u drworker env HOME=/var/lib/dauntless-revived-worker WINEPREFIX=/var/lib/dauntless-revived-worker/wineprefix WINEDEBUG=-all DISPLAY=:99 /usr/lib/wine/wine64 wineboot --init >/tmp/wineboot.log 2>&1 || true
 ufw allow 22/tcp >/dev/null; ufw allow 8700:8775/udp >/dev/null; ufw allow 8800:8810/udp >/dev/null; ufw --force enable >/dev/null
+# the allowlist helper loads the gateway's built ip.js
+(cd $SRC/UndauntedGateway && npm ci --no-audit --no-fund >/dev/null && npm run build >/dev/null && mkdir -p $IR/UndauntedGateway && cp -r dist package.json $IR/UndauntedGateway/)
 sh $IR/deploy/linux-server/deploy-worker.sh --ref "$REF" --force || true
 echo "PUBKEY for MAIN (user dauntless):"; cat /etc/dr-worker/fleet_ed25519.pub
 echo "PROVISION-DONE: fill METAGAME_API_KEY in /etc/dr-worker/deploy.env, add the key on MAIN, then enable the dr-worker-* units"
