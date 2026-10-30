@@ -50,7 +50,8 @@ install -m 755 $HERE/gameserver.sh /opt/dr-worker/gameserver.sh
 # fleet key for the tunnels to MAIN; the public half goes into MAIN's dauntless authorized_keys
 [ -f /etc/dr-worker/fleet_ed25519 ] || { ssh-keygen -q -t ed25519 -N "" -C "ZFXSTATIC-dr-$(hostname)-$(date +%F)" -f /etc/dr-worker/fleet_ed25519; chown drworker:drworker /etc/dr-worker/fleet_ed25519*; }
 ssh-keyscan -t ed25519 $MAIN 2>/dev/null > /etc/dr-worker/known_hosts; chmod 644 /etc/dr-worker/known_hosts
-[ -f /etc/dr-worker/allowlist.env ] || sed "s/@ALLOW_SECRET@/$(openssl rand -hex 24)/" $HERE/allowlist.env.example > /etc/dr-worker/allowlist.env
+# MAIN's gateway sends ONE shared secret to every allowlist helper: put the value other workers use (ALLOWLIST_SECRET in their /etc/dr-worker/allowlist.env) in here; a random one makes every player's firewall call fail
+[ -f /etc/dr-worker/allowlist.env ] || sed "s/@ALLOW_SECRET@/${ALLOWLIST_SECRET:-FILL_FROM_ANOTHER_WORKER}/" $HERE/allowlist.env.example > /etc/dr-worker/allowlist.env
 [ -f /etc/dr-worker/deploy.env ] || sed "s/@MY_IP@/$MY_IP/;s/@MAX_HUNTS@/$MAX_HUNTS/" $HERE/deploy.env.example > /etc/dr-worker/deploy.env
 chown root:drworker /etc/dr-worker/*.env; chmod 640 /etc/dr-worker/*.env
 for u in dr-xvfb dr-worker-deploy dr-worker-allowlist dr-worker-tunnel dr-worker-tunnel-rev; do
