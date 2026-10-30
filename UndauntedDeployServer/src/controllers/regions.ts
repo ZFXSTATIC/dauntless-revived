@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { CapacityUnavailable } from './capacity';
 import { RemoteLaunch, ReadWorkerSnapshot, GameserverSnapshot } from './overflow';
 
-export type RegionChoice = 'main' | 'aus' | 'ger' | 'us' | 'sg' | 'mixed';
+export type RegionChoice = 'main' | 'aus' | 'ger' | 'us' | 'sg' | 'au' | 'mixed';
 type Request = Parameters<typeof RemoteLaunch>[1];
 type Load = {running:number,pending:number,limit:number|null};
 type WorkerRegion = 'aus' | 'ger' | 'us' | 'sg' | 'au';
