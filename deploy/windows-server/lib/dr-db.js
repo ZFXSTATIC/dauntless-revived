@@ -16,7 +16,25 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const http = require("http");
 const { backupProgress } = require("./backup-policy.cjs");
+
+// The metagame answers only when the copy is done, which takes many minutes on a big database.
+// fetch() gives up after undici's fixed 5 minute headers timeout, so use plain http with a single
+// overall limit instead.
+function postJson(url, headers, body, timeoutMs) {
+    return new Promise((resolve, reject) => {
+        const payload = JSON.stringify(body);
+        const req = http.request(url, { method: "POST", headers: { ...headers, "content-length": Buffer.byteLength(payload) } }, (res) => {
+            res.resume();
+            res.on("end", () => { clearTimeout(timer); resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode }); });
+            res.on("error", (e) => { clearTimeout(timer); reject(e); });
+        });
+        const timer = setTimeout(() => req.destroy(Object.assign(new Error(`no answer after ${Math.round(timeoutMs / 60000)} min`), { code: "ETIMEDOUT" })), timeoutMs);
+        req.on("error", (e) => { clearTimeout(timer); reject(e); });
+        req.end(payload);
+    });
+}
 
 function fail(message) {
     throw new Error(message);
@@ -60,14 +78,13 @@ async function main(args = process.argv.slice(2)) {
                 const env = require(path.join(path.resolve(metaDir), 'node_modules', 'dotenv')).parse(fs.readFileSync(rest[2]));
                 let response;
                 try {
-                    response = await fetch('http://127.0.0.1:61000/internal/backup', {
-                        method: 'POST', headers: {'content-type': 'application/json', 'x-undaunted-gameserver-apikey': env.METAGAME_API_KEY},
-                        body: JSON.stringify({name: path.basename(path.dirname(dest))}), signal: AbortSignal.timeout(905000)
-                    });
+                    response = await postJson('http://127.0.0.1:61000/internal/backup',
+                        {'content-type': 'application/json', 'x-undaunted-gameserver-apikey': env.METAGAME_API_KEY},
+                        {name: path.basename(path.dirname(dest))}, 3600000);
                 } catch (error) {
                     // Only a refused connection proves the metagame is stopped. A timeout
                     // may still be copying; do not start another backup in that case.
-                    if (error.cause?.code !== 'ECONNREFUSED') throw error;
+                    if ((error.cause?.code ?? error.code) !== 'ECONNREFUSED') throw error;
                 }
                 if (response?.ok) { console.log(`db ${check(Database, dest)}`); return; }
                 if (response && response.status !== 404) throw new Error(`Live backup failed (${response.status})`);
@@ -137,6 +154,7 @@ async function main(args = process.argv.slice(2)) {
 }
 
 module.exports = main;
+module.exports.postJson = postJson;
 if (require.main === module) main().catch((e) => {
     console.error(`dr-db: ${e.message}`);
     process.exitCode = 1;

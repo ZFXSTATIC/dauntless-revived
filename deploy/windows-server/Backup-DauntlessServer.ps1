@@ -70,6 +70,20 @@ function Log([string]$Text) {
     Write-Output $Text
 }
 
+# Free-space preflight: the previous backup is kept until the new one passes its check, so a full
+# copy has to fit next to it. Skip with a clear line rather than fill the disk (which also stalls
+# the game servers) and leave a partial folder behind.
+if (Test-Path -LiteralPath $P.Db) {
+    $dbBytes = (Get-Item -LiteralPath $P.Db).Length
+    foreach ($ext in '-wal') { if (Test-Path -LiteralPath ($P.Db + $ext)) { $dbBytes += (Get-Item -LiteralPath ($P.Db + $ext)).Length } }
+    $needBytes = [long]($dbBytes * 1.1) + 2GB
+    $freeBytes = (New-Object IO.DriveInfo ([IO.Path]::GetPathRoot((Resolve-Path -LiteralPath $P.Backups).ProviderPath))).AvailableFreeSpace
+    if ($freeBytes -lt $needBytes) {
+        Log ('backup SKIPPED: {0:N1} GB free, {1:N1} GB needed; previous backups retained' -f ($freeBytes / 1GB), ($needBytes / 1GB))
+        exit 1
+    }
+}
+
 $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 $dest = Join-Path $P.Backups $stamp
 if (Test-Path -LiteralPath $dest) { Start-Sleep -Seconds 1; $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'; $dest = Join-Path $P.Backups $stamp }
